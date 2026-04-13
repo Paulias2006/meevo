@@ -15,6 +15,7 @@ class MeevoApiException implements Exception {
   String toString() => message;
 }
 class MeevoApi {
+  static const _productionUrl = 'https://meevo.onrender.com/api';
   static const _fallbackWifiUrl = 'http://192.168.16.130:4000/api';
   static const _lanCandidates = [
     'http://192.168.16.130:4000/api',
@@ -31,8 +32,8 @@ class MeevoApi {
       const String.fromEnvironment('LAN_API_BASE_URL');
 
   String get _fallbackBaseUrl {
-    // IP local du PC (Wi-Fi). Change si tu es sur un autre reseau.
-    return _fallbackWifiUrl;
+    // En production, utilise l'URL Render. En développement, utilise l'IP locale.
+    return kReleaseMode ? _productionUrl : _fallbackWifiUrl;
   }
 
   String get baseUrl => _resolvedBaseUrl ?? _fallbackBaseUrl;
@@ -42,6 +43,12 @@ class MeevoApi {
   Future<String> _effectiveBaseUrl() async {
     if (_resolvedBaseUrl != null) {
       return _resolvedBaseUrl!;
+    }
+
+    // En mode production, utilise directement l'URL Render
+    if (kReleaseMode) {
+      _resolvedBaseUrl = _productionUrl;
+      return _productionUrl;
     }
 
     final candidates = <String>[
