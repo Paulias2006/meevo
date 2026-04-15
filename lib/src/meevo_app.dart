@@ -13852,7 +13852,7 @@ class _MeevoLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logoSize = compact ? 24.0 : 28.0;
+    final logoSize = compact ? 30.0 : 34.0;
     return Align(
       alignment: centered ? Alignment.center : Alignment.centerLeft,
       child: Row(
@@ -13863,7 +13863,7 @@ class _MeevoLogo extends StatelessWidget {
           Text(
             'Meevo',
             style: GoogleFonts.poppins(
-              fontSize: compact ? 16 : 20,
+              fontSize: compact ? 18 : 22,
               fontWeight: FontWeight.w800,
               color: _meevoPurple,
             ),

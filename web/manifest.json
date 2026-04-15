@@ -1,11 +1,11 @@
 {
-    "name": "meevo",
-    "short_name": "meevo",
+    "name": "Meevo",
+    "short_name": "Meevo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Meevo - la plateforme événementielle au Togo.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

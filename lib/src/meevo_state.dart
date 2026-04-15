@@ -26,7 +26,8 @@ class MeevoState extends ChangeNotifier {
   List<BookingItem> bookings = const [];
   List<Venue> myVenues = const [];
   List<ProviderProfile> myProviders = const [];
-  SubscriptionOverview subscriptionOverview = const SubscriptionOverview.empty();
+  SubscriptionOverview subscriptionOverview =
+      const SubscriptionOverview.empty();
   ReservationPaymentData? currentReservationPayment;
   VenueSearchFilters filters = const VenueSearchFilters();
   final Map<String, VenueAvailability> _availabilityCache = {};
@@ -77,9 +78,7 @@ class MeevoState extends ChangeNotifier {
           currentUser!.role == 'admin');
   bool get hasVenuePartnerAccess {
     if (!hasPartnerAccess) return false;
-    final type = currentUser?.partnerProfile?.partnerType
-        .toLowerCase()
-        .trim();
+    final type = currentUser?.partnerProfile?.partnerType.toLowerCase().trim();
     if (type == null || type.isEmpty) {
       return true;
     }
@@ -90,14 +89,13 @@ class MeevoState extends ChangeNotifier {
 
   bool get hasProviderPartnerAccess {
     if (!hasPartnerAccess) return false;
-    final type = currentUser?.partnerProfile?.partnerType
-        .toLowerCase()
-        .trim();
+    final type = currentUser?.partnerProfile?.partnerType.toLowerCase().trim();
     if (type == null || type.isEmpty) {
       return false;
     }
     return type.contains('presta');
   }
+
   String? get token => _token;
   MeevoApi get api => _api;
 
@@ -105,7 +103,7 @@ class MeevoState extends ChangeNotifier {
     isBootstrapping = true;
     notifyListeners();
 
-    const fallbackTimeout = Duration(seconds: 6);
+    const fallbackTimeout = Duration(seconds: 35);
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedToken = prefs.getString(_tokenKey);
@@ -131,8 +129,7 @@ class MeevoState extends ChangeNotifier {
         if (hasPartnerAccess) loadPartnerData(silent: true),
       ]).timeout(fallbackTimeout);
     } on TimeoutException {
-      errorMessage =
-          'Connexion au serveur trop lente. Verifiez le Wi-Fi et l IP.';
+      errorMessage = 'Chargement initial trop lent. Rechargez la page.';
     } finally {
       isBootstrapping = false;
       notifyListeners();
@@ -200,9 +197,7 @@ class MeevoState extends ChangeNotifier {
     try {
       final fetched = await _api.fetchVenues(filters);
       if (filters.eventType.isNotEmpty && fetched.items.isEmpty) {
-        final relaxed = await _api.fetchVenues(
-          filters.copyWith(eventType: ''),
-        );
+        final relaxed = await _api.fetchVenues(filters.copyWith(eventType: ''));
         searchResults = relaxed.items;
         searchPagination = relaxed.pagination;
         infoMessage =

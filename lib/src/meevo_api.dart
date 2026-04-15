@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
@@ -14,77 +12,21 @@ class MeevoApiException implements Exception {
   @override
   String toString() => message;
 }
+
 class MeevoApi {
   static const _productionUrl = 'https://meevo.onrender.com/api';
-  static const _fallbackWifiUrl = 'http://192.168.16.130:4000/api';
-  static const _lanCandidates = [
-    'http://192.168.16.130:4000/api',
-    'http://192.168.56.1:4000/api',
-    'http://192.168.88.14:4000/api',
-    'http://192.168.188.100:4000/api',
-    'http://172.19.240.1:4000/api',
-  ];
-  static const _healthTimeout = Duration(milliseconds: 1800);
-  String? _resolvedBaseUrl;
-
-  String get _configuredUrl => const String.fromEnvironment('API_BASE_URL');
-  String get _lanOverrideUrl =>
-      const String.fromEnvironment('LAN_API_BASE_URL');
 
   String get _fallbackBaseUrl {
-    // En production, utilise l'URL Render. En développement, utilise l'IP locale.
-    return kReleaseMode ? _productionUrl : _fallbackWifiUrl;
+    // Toujours utiliser l'URL Render (production)
+    return _productionUrl;
   }
 
-  String get baseUrl => _resolvedBaseUrl ?? _fallbackBaseUrl;
+  String get baseUrl => _fallbackBaseUrl;
 
   String get socketUrl => (baseUrl).replaceFirst(RegExp(r'/api/?$'), '');
 
   Future<String> _effectiveBaseUrl() async {
-    if (_resolvedBaseUrl != null) {
-      return _resolvedBaseUrl!;
-    }
-
-    // En mode production, utilise directement l'URL Render
-    if (kReleaseMode) {
-      _resolvedBaseUrl = _productionUrl;
-      return _productionUrl;
-    }
-
-    final candidates = <String>[
-      if (_configuredUrl.isNotEmpty) _configuredUrl,
-      if (_lanOverrideUrl.isNotEmpty) _lanOverrideUrl,
-      ..._lanCandidates,
-      _fallbackBaseUrl,
-      if (!kIsWeb) 'http://10.0.2.2:4000/api',
-    ];
-
-    final uniqueCandidates = <String>{
-      for (final url in candidates) url,
-    }.toList();
-
-    for (final url in uniqueCandidates) {
-      final ok = await _pingHealth(url);
-      if (ok) {
-        _resolvedBaseUrl = url;
-        return url;
-      }
-    }
-
-    // Aucun serveur detecte: on renvoie le fallback sans le memoriser,
-    // pour re-tester automatiquement au prochain appel.
-    return _fallbackBaseUrl;
-  }
-
-  Future<bool> _pingHealth(String baseUrl) async {
-    final root = baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
-    final uri = Uri.parse('$root/health');
-    try {
-      final response = await http.get(uri).timeout(_healthTimeout);
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (_) {
-      return false;
-    }
+    return _productionUrl;
   }
 
   static const _providersPageSize = 55;
@@ -581,6 +523,8 @@ class MeevoApi {
     );
   }
 
+  static const _requestTimeout = Duration(seconds: 15);
+
   Future<Map<String, dynamic>> _get(
     String path, {
     Map<String, String>? query,
@@ -590,16 +534,15 @@ class MeevoApi {
     final uri = Uri.parse(
       '$resolvedBaseUrl$path',
     ).replace(queryParameters: query);
-    try {
-      final response = await http.get(uri, headers: _headers(token));
-      return _decode(response);
-    } on TimeoutException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    } on http.ClientException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    }
+    final response = await http
+        .get(uri, headers: _headers(token))
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw MeevoApiException(
+            'La requête a expiré après ${_requestTimeout.inSeconds}s. Verifiez votre connexion.',
+          ),
+        );
+    return _decode(response);
   }
 
   Future<Map<String, dynamic>> _post(
@@ -609,20 +552,15 @@ class MeevoApi {
   }) async {
     final resolvedBaseUrl = await _effectiveBaseUrl();
     final uri = Uri.parse('$resolvedBaseUrl$path');
-    try {
-      final response = await http.post(
-        uri,
-        headers: _headers(token),
-        body: jsonEncode(body),
-      );
-      return _decode(response);
-    } on TimeoutException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    } on http.ClientException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    }
+    final response = await http
+        .post(uri, headers: _headers(token), body: jsonEncode(body))
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw MeevoApiException(
+            'La requête a expiré après ${_requestTimeout.inSeconds}s. Verifiez votre connexion.',
+          ),
+        );
+    return _decode(response);
   }
 
   Future<Map<String, dynamic>> _patch(
@@ -632,35 +570,29 @@ class MeevoApi {
   }) async {
     final resolvedBaseUrl = await _effectiveBaseUrl();
     final uri = Uri.parse('$resolvedBaseUrl$path');
-    try {
-      final response = await http.patch(
-        uri,
-        headers: _headers(token),
-        body: jsonEncode(body),
-      );
-      return _decode(response);
-    } on TimeoutException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    } on http.ClientException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    }
+    final response = await http
+        .patch(uri, headers: _headers(token), body: jsonEncode(body))
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw MeevoApiException(
+            'La requête a expiré après ${_requestTimeout.inSeconds}s. Verifiez votre connexion.',
+          ),
+        );
+    return _decode(response);
   }
 
   Future<Map<String, dynamic>> _delete(String path, {String? token}) async {
     final resolvedBaseUrl = await _effectiveBaseUrl();
     final uri = Uri.parse('$resolvedBaseUrl$path');
-    try {
-      final response = await http.delete(uri, headers: _headers(token));
-      return _decode(response);
-    } on TimeoutException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    } on http.ClientException catch (_) {
-      _resolvedBaseUrl = null;
-      rethrow;
-    }
+    final response = await http
+        .delete(uri, headers: _headers(token))
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw MeevoApiException(
+            'La requête a expiré après ${_requestTimeout.inSeconds}s. Verifiez votre connexion.',
+          ),
+        );
+    return _decode(response);
   }
 
   Map<String, String> _headers(String? token) {
