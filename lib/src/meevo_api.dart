@@ -217,6 +217,79 @@ class MeevoApi {
     );
   }
 
+  Future<AdminUsersResponse> fetchAdminUsers({
+    required String token,
+    String query = '',
+    String role = 'Tous',
+    String subscriptionStatus = 'Tous',
+    String city = '',
+    String from = '',
+    String to = '',
+  }) async {
+    final json = await _get(
+      '/admin/users',
+      token: token,
+      query: {
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (role != 'Tous') 'role': role,
+        if (subscriptionStatus != 'Tous')
+          'subscriptionStatus': subscriptionStatus,
+        if (city.trim().isNotEmpty) 'city': city.trim(),
+        if (from.trim().isNotEmpty) 'from': from.trim(),
+        if (to.trim().isNotEmpty) 'to': to.trim(),
+      },
+    );
+    return AdminUsersResponse.fromJson(
+      json['item'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  Future<AdminUserRecord> createAdminUser({
+    required String token,
+    required String fullName,
+    required String email,
+    required String password,
+    String phone = '',
+    String city = '',
+  }) async {
+    final json = await _post(
+      '/admin/users/admin',
+      token: token,
+      body: {
+        'fullName': fullName,
+        'email': email,
+        'password': password,
+        'phone': phone,
+        'city': city,
+      },
+    );
+    return AdminUserRecord.fromJson(
+      json['item'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  Future<AdminUserRecord> updateAdminUserAdminStatus({
+    required String token,
+    required String userId,
+    required bool isAdmin,
+  }) async {
+    final json = await _patch(
+      '/admin/users/$userId/admin',
+      token: token,
+      body: {'isAdmin': isAdmin},
+    );
+    return AdminUserRecord.fromJson(
+      json['item'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  Future<void> deleteAdminUser({
+    required String token,
+    required String userId,
+  }) async {
+    await _delete('/admin/users/$userId', token: token);
+  }
+
   Future<List<BookingItem>> fetchBookings(String token) async {
     final json = await _get('/bookings', token: token);
     final items = json['items'] as List<dynamic>? ?? const [];
@@ -445,6 +518,7 @@ class MeevoApi {
     required String token,
     String query = '',
     String payoutStatus = 'Tous',
+    String withdrawalStatus = 'Tous',
     String network = 'Tous',
     String range = 'all',
     int? year,
@@ -456,6 +530,7 @@ class MeevoApi {
       query: {
         if (query.trim().isNotEmpty) 'q': query.trim(),
         if (payoutStatus != 'Tous') 'payoutStatus': payoutStatus,
+        if (withdrawalStatus != 'Tous') 'withdrawalStatus': withdrawalStatus,
         if (network != 'Tous') 'network': network,
         if (range != 'all') 'range': range,
         if (year != null) 'year': year.toString(),
@@ -471,6 +546,7 @@ class MeevoApi {
     required String token,
     String query = '',
     String payoutStatus = 'Tous',
+    String withdrawalStatus = 'Tous',
     String network = 'Tous',
     String range = 'all',
     int? year,
@@ -482,6 +558,7 @@ class MeevoApi {
       query: {
         if (query.trim().isNotEmpty) 'q': query.trim(),
         if (payoutStatus != 'Tous') 'payoutStatus': payoutStatus,
+        if (withdrawalStatus != 'Tous') 'withdrawalStatus': withdrawalStatus,
         if (network != 'Tous') 'network': network,
         if (range != 'all') 'range': range,
         if (year != null) 'year': year.toString(),
@@ -505,6 +582,46 @@ class MeevoApi {
       body: {'payoutReference': payoutReference, 'payoutNotes': payoutNotes},
     );
     return ReservationPaymentData.fromJson(
+      json['item'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  Future<WithdrawalData> createPartnerWithdrawal({
+    required String token,
+    required double amount,
+    String? network,
+    String? phoneNumber,
+    String? accountName,
+  }) async {
+    final json = await _post(
+      '/bookings/finance/partner/withdrawals',
+      token: token,
+      body: {
+        'amount': amount,
+        if (network != null && network.trim().isNotEmpty) 'network': network,
+        if (phoneNumber != null && phoneNumber.trim().isNotEmpty)
+          'phoneNumber': phoneNumber,
+        if (accountName != null && accountName.trim().isNotEmpty)
+          'accountName': accountName,
+      },
+    );
+    return WithdrawalData.fromJson(
+      json['item'] as Map<String, dynamic>? ?? const {},
+    );
+  }
+
+  Future<WithdrawalData> updateAdminWithdrawal({
+    required String token,
+    required String withdrawalId,
+    required String status,
+    String adminNotes = '',
+  }) async {
+    final json = await _patch(
+      '/bookings/finance/admin/withdrawals/$withdrawalId',
+      token: token,
+      body: {'status': status, 'adminNotes': adminNotes},
+    );
+    return WithdrawalData.fromJson(
       json['item'] as Map<String, dynamic>? ?? const {},
     );
   }

@@ -28,13 +28,13 @@ async function run() {
   const existing = await User.findOne({ email });
   if (existing) {
     existing.role = 'admin';
-    if (fullNameArg.isNotEmpty) {
+    if (fullNameArg.trim().length > 0) {
       existing.fullName = fullNameArg;
     }
-    if (phoneArg.isNotEmpty) {
+    if (phoneArg.trim().length > 0) {
       existing.phone = phoneArg;
     }
-    if (cityArg.isNotEmpty) {
+    if (cityArg.trim().length > 0) {
       existing.city = cityArg;
     }
     existing.passwordHash = await hashPassword(password);
@@ -44,9 +44,8 @@ async function run() {
   }
 
   const passwordHash = await hashPassword(password);
-  const fullName =
-    fullNameArg.isNotEmpty ? fullNameArg : 'Admin Meevo';
-  const city = cityArg.isNotEmpty ? cityArg : 'Lome';
+  const fullName = fullNameArg.trim().length > 0 ? fullNameArg : 'Admin Meevo';
+  const city = cityArg.trim().length > 0 ? cityArg : 'Lome';
   await User.create({
     fullName,
     email,

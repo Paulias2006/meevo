@@ -414,6 +414,25 @@ class MeevoState extends ChangeNotifier {
     }
   }
 
+  Future<AdminSubscriptionResponse> loadAdminSubscriptions({
+    String paymentStatus = 'Tous',
+    int? year,
+    int? month,
+  }) async {
+    if (_token == null) return const AdminSubscriptionResponse.empty();
+
+    try {
+      return await _api.fetchAdminSubscriptions(
+        token: _token!,
+        status: paymentStatus,
+        year: year,
+        month: month,
+      );
+    } catch (_) {
+      return const AdminSubscriptionResponse.empty();
+    }
+  }
+
   Future<SubscriptionCheckoutResult?> startSubscriptionCheckout({
     required int months,
     required String network,

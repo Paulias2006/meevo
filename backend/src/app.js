@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { adminRouter } from './routes/admin.js';
 import { env } from './config/env.js';
 import { authRouter } from './routes/auth.js';
 import { bookingsRouter } from './routes/bookings.js';
@@ -37,6 +38,7 @@ export function createApp(io) {
   app.use(express.urlencoded({ extended: true, limit: '4mb' }));
 
   app.use('/api/auth', authRouter);
+  app.use('/api/admin', adminRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/location', locationRouter);
   app.use('/api/subscriptions', subscriptionsRouter);

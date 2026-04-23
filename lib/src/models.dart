@@ -8,6 +8,7 @@ class AppUser {
     this.subscription,
     this.phone,
     this.city,
+    this.createdAt,
   });
 
   final String id;
@@ -18,6 +19,7 @@ class AppUser {
   final PartnerSubscriptionData? subscription;
   final String? phone;
   final String? city;
+  final String? createdAt;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
@@ -37,6 +39,7 @@ class AppUser {
           : null,
       phone: json['phone']?.toString(),
       city: json['city']?.toString(),
+      createdAt: json['createdAt']?.toString(),
     );
   }
 }
@@ -544,6 +547,91 @@ class AdminSubscriptionResponse {
       items: (json['items'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(AdminSubscriptionRecord.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class AdminUsersSummary {
+  const AdminUsersSummary({
+    required this.totalUsers,
+    required this.admins,
+    required this.partners,
+    required this.customers,
+    required this.activeSubscriptions,
+  });
+
+  const AdminUsersSummary.empty()
+      : totalUsers = 0,
+        admins = 0,
+        partners = 0,
+        customers = 0,
+        activeSubscriptions = 0;
+
+  final int totalUsers;
+  final int admins;
+  final int partners;
+  final int customers;
+  final int activeSubscriptions;
+
+  factory AdminUsersSummary.fromJson(Map<String, dynamic> json) {
+    return AdminUsersSummary(
+      totalUsers: (json['totalUsers'] as num?)?.toInt() ?? 0,
+      admins: (json['admins'] as num?)?.toInt() ?? 0,
+      partners: (json['partners'] as num?)?.toInt() ?? 0,
+      customers: (json['customers'] as num?)?.toInt() ?? 0,
+      activeSubscriptions: (json['activeSubscriptions'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class AdminUserRecord {
+  const AdminUserRecord({
+    required this.user,
+    required this.businessName,
+    required this.partnerType,
+    required this.whatsapp,
+    required this.subscriptionState,
+    required this.hasPartnerProfile,
+  });
+
+  final AppUser user;
+  final String businessName;
+  final String partnerType;
+  final String whatsapp;
+  final String subscriptionState;
+  final bool hasPartnerProfile;
+
+  factory AdminUserRecord.fromJson(Map<String, dynamic> json) {
+    return AdminUserRecord(
+      user: AppUser.fromJson(json['user'] as Map<String, dynamic>? ?? const {}),
+      businessName: json['businessName']?.toString() ?? '',
+      partnerType: json['partnerType']?.toString() ?? '',
+      whatsapp: json['whatsapp']?.toString() ?? '',
+      subscriptionState: json['subscriptionState']?.toString() ?? 'inactive',
+      hasPartnerProfile: json['hasPartnerProfile'] == true,
+    );
+  }
+}
+
+class AdminUsersResponse {
+  const AdminUsersResponse({required this.summary, required this.items});
+
+  const AdminUsersResponse.empty()
+      : summary = const AdminUsersSummary.empty(),
+        items = const [];
+
+  final AdminUsersSummary summary;
+  final List<AdminUserRecord> items;
+
+  factory AdminUsersResponse.fromJson(Map<String, dynamic> json) {
+    return AdminUsersResponse(
+      summary: AdminUsersSummary.fromJson(
+        json['summary'] as Map<String, dynamic>? ?? const {},
+      ),
+      items: (json['items'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(AdminUserRecord.fromJson)
           .toList(),
     );
   }
@@ -1238,14 +1326,29 @@ class ReservationFinanceResponse {
   const ReservationFinanceResponse({
     required this.summary,
     required this.items,
+    required this.wallet,
+    required this.withdrawalsSummary,
+    required this.withdrawals,
+    required this.partnerTotals,
+    this.payoutProviderAvailableBalance,
   });
 
   const ReservationFinanceResponse.empty()
       : summary = const ReservationFinanceSummary.empty(),
-        items = const [];
+        items = const [],
+        wallet = const PartnerWalletSummary.empty(),
+        withdrawalsSummary = const WithdrawalSummary.empty(),
+        withdrawals = const [],
+        partnerTotals = const [],
+        payoutProviderAvailableBalance = null;
 
   final ReservationFinanceSummary summary;
   final List<ReservationPaymentData> items;
+  final PartnerWalletSummary wallet;
+  final WithdrawalSummary withdrawalsSummary;
+  final List<WithdrawalData> withdrawals;
+  final List<PartnerRevenueAggregate> partnerTotals;
+  final double? payoutProviderAvailableBalance;
 
   factory ReservationFinanceResponse.fromJson(Map<String, dynamic> json) {
     return ReservationFinanceResponse(
@@ -1256,6 +1359,201 @@ class ReservationFinanceResponse {
           .whereType<Map<String, dynamic>>()
           .map(ReservationPaymentData.fromJson)
           .toList(),
+      wallet: PartnerWalletSummary.fromJson(
+        json['wallet'] as Map<String, dynamic>? ?? const {},
+      ),
+      withdrawalsSummary: WithdrawalSummary.fromJson(
+        json['withdrawalsSummary'] as Map<String, dynamic>? ?? const {},
+      ),
+      withdrawals: (json['withdrawals'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(WithdrawalData.fromJson)
+          .toList(),
+      partnerTotals: (json['partnerTotals'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(PartnerRevenueAggregate.fromJson)
+          .toList(),
+      payoutProviderAvailableBalance:
+          (json['payoutProviderAvailableBalance'] as num?)?.toDouble(),
+    );
+  }
+}
+
+class PartnerWalletSummary {
+  const PartnerWalletSummary({
+    required this.totalNetRevenue,
+    required this.readyBalance,
+    required this.lockedPendingProfile,
+    required this.reservedWithdrawals,
+    required this.paidWithdrawals,
+    required this.availableBalance,
+    this.payoutProviderAvailableBalance,
+    this.payoutProviderRawBalance,
+  });
+
+  const PartnerWalletSummary.empty()
+      : totalNetRevenue = 0,
+        readyBalance = 0,
+        lockedPendingProfile = 0,
+        reservedWithdrawals = 0,
+        paidWithdrawals = 0,
+        availableBalance = 0,
+        payoutProviderAvailableBalance = null,
+        payoutProviderRawBalance = null;
+
+  final double totalNetRevenue;
+  final double readyBalance;
+  final double lockedPendingProfile;
+  final double reservedWithdrawals;
+  final double paidWithdrawals;
+  final double availableBalance;
+  final double? payoutProviderAvailableBalance;
+  final double? payoutProviderRawBalance;
+
+  factory PartnerWalletSummary.fromJson(Map<String, dynamic> json) {
+    return PartnerWalletSummary(
+      totalNetRevenue: (json['totalNetRevenue'] as num?)?.toDouble() ?? 0,
+      readyBalance: (json['readyBalance'] as num?)?.toDouble() ?? 0,
+      lockedPendingProfile:
+          (json['lockedPendingProfile'] as num?)?.toDouble() ?? 0,
+      reservedWithdrawals:
+          (json['reservedWithdrawals'] as num?)?.toDouble() ?? 0,
+      paidWithdrawals: (json['paidWithdrawals'] as num?)?.toDouble() ?? 0,
+      availableBalance: (json['availableBalance'] as num?)?.toDouble() ?? 0,
+      payoutProviderAvailableBalance:
+          (json['payoutProviderAvailableBalance'] as num?)?.toDouble(),
+      payoutProviderRawBalance:
+          (json['payoutProviderRawBalance'] as num?)?.toDouble(),
+    );
+  }
+}
+
+class WithdrawalSummary {
+  const WithdrawalSummary({
+    required this.totalRequestedAmount,
+    required this.pendingAmount,
+    required this.paidAmount,
+  });
+
+  const WithdrawalSummary.empty()
+      : totalRequestedAmount = 0,
+        pendingAmount = 0,
+        paidAmount = 0;
+
+  final double totalRequestedAmount;
+  final double pendingAmount;
+  final double paidAmount;
+
+  factory WithdrawalSummary.fromJson(Map<String, dynamic> json) {
+    return WithdrawalSummary(
+      totalRequestedAmount:
+          (json['totalRequestedAmount'] as num?)?.toDouble() ?? 0,
+      pendingAmount: (json['pendingAmount'] as num?)?.toDouble() ?? 0,
+      paidAmount: (json['paidAmount'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class WithdrawalData {
+  const WithdrawalData({
+    required this.id,
+    required this.amount,
+    required this.currency,
+    required this.network,
+    required this.phoneNumber,
+    required this.accountName,
+    required this.clientTransferId,
+    required this.status,
+    this.cinetpayTransferId,
+    this.lot,
+    this.transferStatus,
+    this.sendingStatus,
+    this.comment,
+    this.adminNotes,
+    this.requestedAt,
+    this.processedAt,
+    this.paidAt,
+    this.createdAt,
+    this.partner,
+  });
+
+  final String id;
+  final double amount;
+  final String currency;
+  final String network;
+  final String phoneNumber;
+  final String accountName;
+  final String clientTransferId;
+  final String status;
+  final String? cinetpayTransferId;
+  final String? lot;
+  final String? transferStatus;
+  final String? sendingStatus;
+  final String? comment;
+  final String? adminNotes;
+  final String? requestedAt;
+  final String? processedAt;
+  final String? paidAt;
+  final String? createdAt;
+  final AppUser? partner;
+
+  factory WithdrawalData.fromJson(Map<String, dynamic> json) {
+    final withdrawalJson =
+        json['withdrawal'] as Map<String, dynamic>? ?? json;
+    final partnerJson = json['partner'];
+    return WithdrawalData(
+      id: withdrawalJson['id']?.toString() ?? '',
+      amount: (withdrawalJson['amount'] as num?)?.toDouble() ?? 0,
+      currency: withdrawalJson['currency']?.toString() ?? 'XOF',
+      network: withdrawalJson['network']?.toString() ?? '',
+      phoneNumber: withdrawalJson['phoneNumber']?.toString() ?? '',
+      accountName: withdrawalJson['accountName']?.toString() ?? '',
+      clientTransferId: withdrawalJson['clientTransferId']?.toString() ?? '',
+      status: withdrawalJson['status']?.toString() ?? 'pending',
+      cinetpayTransferId: withdrawalJson['cinetpayTransferId']?.toString(),
+      lot: withdrawalJson['lot']?.toString(),
+      transferStatus: withdrawalJson['transferStatus']?.toString(),
+      sendingStatus: withdrawalJson['sendingStatus']?.toString(),
+      comment: withdrawalJson['comment']?.toString(),
+      adminNotes: withdrawalJson['adminNotes']?.toString(),
+      requestedAt: withdrawalJson['requestedAt']?.toString(),
+      processedAt: withdrawalJson['processedAt']?.toString(),
+      paidAt: withdrawalJson['paidAt']?.toString(),
+      createdAt: withdrawalJson['createdAt']?.toString(),
+      partner: partnerJson is Map<String, dynamic>
+          ? AppUser.fromJson(partnerJson)
+          : null,
+    );
+  }
+}
+
+class PartnerRevenueAggregate {
+  const PartnerRevenueAggregate({
+    required this.reservations,
+    required this.grossAmount,
+    required this.platformFeeAmount,
+    required this.partnerNetAmount,
+    this.partner,
+  });
+
+  final int reservations;
+  final double grossAmount;
+  final double platformFeeAmount;
+  final double partnerNetAmount;
+  final AppUser? partner;
+
+  factory PartnerRevenueAggregate.fromJson(Map<String, dynamic> json) {
+    final partnerJson = json['partner'];
+    return PartnerRevenueAggregate(
+      reservations: (json['reservations'] as num?)?.toInt() ?? 0,
+      grossAmount: (json['grossAmount'] as num?)?.toDouble() ?? 0,
+      platformFeeAmount:
+          (json['platformFeeAmount'] as num?)?.toDouble() ?? 0,
+      partnerNetAmount:
+          (json['partnerNetAmount'] as num?)?.toDouble() ?? 0,
+      partner: partnerJson is Map<String, dynamic>
+          ? AppUser.fromJson(partnerJson)
+          : null,
     );
   }
 }

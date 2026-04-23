@@ -6,13 +6,18 @@ import {
   requireRole,
 } from '../middleware/auth.js';
 import { Booking } from '../models/Booking.js';
+import { PartnerWithdrawal } from '../models/PartnerWithdrawal.js';
 import { ReservationPayment } from '../models/ReservationPayment.js';
 import { Venue } from '../models/Venue.js';
 import { env } from '../config/env.js';
 import { emitCalendarUpdate } from '../utils/emitCalendarUpdate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
+  checkCinetpayTransferBalance,
+  checkCinetpayTransferStatus,
   checkCinetpayPaymentStatus,
+  initiateCinetpayTransfer,
+  isCinetpayPayoutConfigured,
   initiateCinetpayPayment,
   isCinetpayConfigured,
 } from '../utils/cinetpay.js';
@@ -77,6 +82,18 @@ const bookingStatusSchema = z.object({
 const payoutUpdateSchema = z.object({
   payoutReference: z.string().optional().or(z.literal('')),
   payoutNotes: z.string().optional().or(z.literal('')),
+});
+
+const partnerWithdrawalCreateSchema = z.object({
+  amount: z.coerce.number().positive(),
+  network: z.enum(['MOOV', 'TOGOCEL']).optional(),
+  phoneNumber: z.string().optional().or(z.literal('')),
+  accountName: z.string().optional().or(z.literal('')),
+});
+
+const adminWithdrawalUpdateSchema = z.object({
+  status: z.enum(['processing', 'paid', 'rejected', 'failed']),
+  adminNotes: z.string().optional().or(z.literal('')),
 });
 
 function createBookingPayload(booking) {
@@ -223,6 +240,128 @@ function buildReservationFinanceSummary(records) {
     ),
     currentMonthGrossAmount: monthGross,
   };
+}
+
+function createWithdrawalIdentifier(partnerId) {
+  const stamp = Date.now();
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `MEEVO-WD-${partnerId.toString().slice(-4).toUpperCase()}-${stamp}-${suffix}`;
+}
+
+function buildWithdrawalRecord(withdrawal) {
+  const partner =
+    withdrawal.partner?.toPublicJSON?.() ??
+    (withdrawal.partner?._id
+      ? {
+          id: withdrawal.partner._id.toString(),
+          fullName: withdrawal.partner.fullName,
+          email: withdrawal.partner.email,
+          phone: withdrawal.partner.phone,
+          partnerProfile: withdrawal.partner.partnerProfile,
+        }
+      : null);
+
+  return {
+    withdrawal: withdrawal.toPublicJSON(),
+    partner,
+  };
+}
+
+function summarizeWithdrawals(withdrawals) {
+  const items = withdrawals.map((entry) => entry.withdrawal ?? entry);
+  return {
+    totalRequestedAmount: items.reduce((sum, item) => sum + (item.amount || 0), 0),
+    pendingAmount: items
+      .filter((item) => item.status === 'pending' || item.status === 'processing')
+      .reduce((sum, item) => sum + (item.amount || 0), 0),
+    paidAmount: items
+      .filter((item) => item.status === 'paid')
+      .reduce((sum, item) => sum + (item.amount || 0), 0),
+  };
+}
+
+async function computePartnerWallet(partnerId) {
+  const [payments, withdrawals] = await Promise.all([
+    ReservationPayment.find({
+      partner: partnerId,
+      status: 'success',
+    }).select('partnerNetAmount payoutStatus'),
+    PartnerWithdrawal.find({
+      partner: partnerId,
+      status: { $in: ['pending', 'processing', 'paid'] },
+    }).select('amount status'),
+  ]);
+
+  const totalNetRevenue = payments.reduce(
+    (sum, item) => sum + (Number(item.partnerNetAmount) || 0),
+    0,
+  );
+  const readyBalance = payments
+    .filter((item) => item.payoutStatus === 'ready')
+    .reduce((sum, item) => sum + (Number(item.partnerNetAmount) || 0), 0);
+  const lockedPendingProfile = payments
+    .filter((item) => item.payoutStatus === 'pending_profile')
+    .reduce((sum, item) => sum + (Number(item.partnerNetAmount) || 0), 0);
+  const reservedWithdrawals = withdrawals
+    .filter((item) => item.status === 'pending' || item.status === 'processing')
+    .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const paidWithdrawals = withdrawals
+    .filter((item) => item.status === 'paid')
+    .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const availableBalance = Math.max(0, readyBalance - reservedWithdrawals);
+
+  return {
+    totalNetRevenue,
+    readyBalance,
+    lockedPendingProfile,
+    reservedWithdrawals,
+    paidWithdrawals,
+    availableBalance,
+  };
+}
+
+function resolveWithdrawalPaymentMethod(network) {
+  return network === 'TOGOCEL' ? '' : '';
+}
+
+async function syncWithdrawalFromProvider(withdrawal) {
+  if (!withdrawal.cinetpayTransferId && !withdrawal.clientTransferId && !withdrawal.lot) {
+    return withdrawal;
+  }
+
+  const providerStatus = await checkCinetpayTransferStatus({
+    transactionId: withdrawal.cinetpayTransferId,
+    clientTransferId: withdrawal.clientTransferId,
+    lot: withdrawal.lot,
+  });
+  const item = Array.isArray(providerStatus?.data)
+    ? providerStatus.data[0]
+    : providerStatus?.data;
+
+  withdrawal.lastProviderPayload = providerStatus;
+  withdrawal.transferStatus = item?.treatment_status || withdrawal.transferStatus;
+  withdrawal.sendingStatus = item?.sending_status || withdrawal.sendingStatus;
+  withdrawal.comment = item?.comment || withdrawal.comment;
+
+  if (providerStatus.internalStatus === 'paid') {
+    withdrawal.status = 'paid';
+    withdrawal.paidAt = item?.validated_at
+      ? new Date(item.validated_at)
+      : withdrawal.paidAt || new Date();
+    withdrawal.processedAt = withdrawal.processedAt || new Date();
+  } else if (providerStatus.internalStatus === 'failed') {
+    withdrawal.status = 'failed';
+    withdrawal.processedAt = new Date();
+  } else if (providerStatus.internalStatus === 'rejected') {
+    withdrawal.status = 'rejected';
+    withdrawal.processedAt = new Date();
+  } else if (withdrawal.status === 'pending') {
+    withdrawal.status = 'processing';
+    withdrawal.processedAt = withdrawal.processedAt || new Date();
+  }
+
+  await withdrawal.save();
+  return withdrawal;
 }
 
 async function validateScheduleAvailability({
@@ -637,10 +776,21 @@ router.get(
       return response.status(403).json({ message: 'Permission refusee.' });
     }
 
-    const { q = '', payoutStatus, network, year, month, range } = request.query;
+    const {
+      q = '',
+      payoutStatus,
+      withdrawalStatus,
+      network,
+      year,
+      month,
+      range,
+    } = request.query;
     const filters = {
       partner: request.user._id,
       status: 'success',
+    };
+    const withdrawalFilters = {
+      partner: request.user._id,
     };
 
     if (payoutStatus && payoutStatus !== 'Tous') {
@@ -649,20 +799,35 @@ router.get(
 
     if (network && network !== 'Tous') {
       filters.network = String(network);
+      withdrawalFilters.network = String(network);
+    }
+
+    if (withdrawalStatus && withdrawalStatus !== 'Tous') {
+      withdrawalFilters.status = String(withdrawalStatus);
     }
 
     const paidAt = buildFinanceRangeFilter(range, year, month);
     if (paidAt) {
       filters.paidAt = paidAt;
+      withdrawalFilters.requestedAt = paidAt;
     }
 
-    const payments = await ReservationPayment.find(filters)
-      .populate('customer')
-      .populate('partner')
-      .populate('venue')
-      .populate('booking')
-      .sort({ paidAt: -1, createdAt: -1 })
-      .limit(2000);
+    const [payments, rawWithdrawals, payoutBalance] = await Promise.all([
+      ReservationPayment.find(filters)
+        .populate('customer')
+        .populate('partner')
+        .populate('venue')
+        .populate('booking')
+        .sort({ paidAt: -1, createdAt: -1 })
+        .limit(2000),
+      PartnerWithdrawal.find(withdrawalFilters)
+        .populate('partner')
+        .sort({ requestedAt: -1, createdAt: -1 })
+        .limit(500),
+      isCinetpayPayoutConfigured()
+        ? checkCinetpayTransferBalance().catch(() => null)
+        : Promise.resolve(null),
+    ]);
 
     const query = String(q).trim().toLowerCase();
     const records = payments
@@ -686,11 +851,140 @@ router.get(
         return haystack.includes(query);
       });
 
+    const withdrawals = await Promise.all(
+      rawWithdrawals.map(async (withdrawal) => {
+        if (
+          isCinetpayPayoutConfigured() &&
+          (withdrawal.status === 'pending' || withdrawal.status === 'processing')
+        ) {
+          return buildWithdrawalRecord(await syncWithdrawalFromProvider(withdrawal));
+        }
+        return buildWithdrawalRecord(withdrawal);
+      }),
+    ).then((items) =>
+      items.filter((record) => {
+        if (!query) return true;
+        const haystack = [
+          record.withdrawal.clientTransferId,
+          record.withdrawal.cinetpayTransferId,
+          record.withdrawal.phoneNumber,
+          record.withdrawal.accountName,
+          record.withdrawal.network,
+          record.partner?.fullName,
+          record.partner?.email,
+          record.partner?.partnerProfile?.businessName,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      }),
+    );
+    const wallet = await computePartnerWallet(request.user._id);
+
     response.json({
       item: {
         summary: buildReservationFinanceSummary(records),
         items: records,
+        wallet: {
+          ...wallet,
+          payoutProviderAvailableBalance:
+            payoutBalance?.available != null ? Number(payoutBalance.available) : null,
+          payoutProviderRawBalance:
+            payoutBalance?.amount != null ? Number(payoutBalance.amount) : null,
+        },
+        withdrawalsSummary: summarizeWithdrawals(withdrawals),
+        withdrawals,
       },
+    });
+  }),
+);
+
+router.post(
+  '/finance/partner/withdrawals',
+  requireAuth,
+  asyncHandler(async (request, response) => {
+    if (request.user.role !== 'partner' && request.user.role !== 'admin') {
+      return response.status(403).json({ message: 'Permission refusee.' });
+    }
+
+    const body = partnerWithdrawalCreateSchema.parse(request.body);
+    const payoutProfile = request.user.partnerProfile ?? {};
+    const network = body.network || payoutProfile.payoutNetwork || 'MOOV';
+    const phoneNumber = (body.phoneNumber || payoutProfile.payoutPhoneNumber || '').trim();
+    const accountName = (body.accountName || payoutProfile.payoutAccountName || '').trim();
+
+    if (!phoneNumber) {
+      return response.status(409).json({
+        message: 'Configurez d abord votre numero de retrait.',
+      });
+    }
+
+    const wallet = await computePartnerWallet(request.user._id);
+    const roundedAmount = Math.floor(Math.max(0, Number(body.amount) || 0) / 5) * 5;
+
+    if (roundedAmount < 100) {
+      return response.status(409).json({
+        message: 'Le retrait minimum est fixe a 100 FCFA.',
+      });
+    }
+
+    if (roundedAmount > wallet.availableBalance) {
+      return response.status(409).json({
+        message: 'Le montant depasse votre solde disponible.',
+      });
+    }
+
+    const withdrawal = await PartnerWithdrawal.create({
+      partner: request.user._id,
+      amount: roundedAmount,
+      network,
+      phoneNumber,
+      accountName,
+      clientTransferId: createWithdrawalIdentifier(request.user._id),
+      status: isCinetpayPayoutConfigured() ? 'processing' : 'pending',
+    });
+
+    if (isCinetpayPayoutConfigured()) {
+      try {
+        const transfer = await initiateCinetpayTransfer({
+          clientTransferId: withdrawal.clientTransferId,
+          amount: roundedAmount,
+          phoneNumber,
+          paymentMethod: resolveWithdrawalPaymentMethod(network),
+        });
+        const item = transfer.item ?? {};
+        withdrawal.cinetpayTransferId = item.transaction_id || '';
+        withdrawal.lot = item.lot || '';
+        withdrawal.transferStatus = item.treatment_status || '';
+        withdrawal.sendingStatus = item.sending_status || '';
+        withdrawal.comment = item.comment || '';
+        withdrawal.lastProviderPayload = transfer.raw;
+        withdrawal.processedAt = new Date();
+        if (transfer.internalStatus === 'paid') {
+          withdrawal.status = 'paid';
+          withdrawal.paidAt = item.validated_at
+            ? new Date(item.validated_at)
+            : new Date();
+        } else if (transfer.internalStatus === 'failed') {
+          withdrawal.status = 'failed';
+        } else if (transfer.internalStatus === 'rejected') {
+          withdrawal.status = 'rejected';
+        } else {
+          withdrawal.status = 'processing';
+        }
+        await withdrawal.save();
+      } catch (error) {
+        withdrawal.status = 'pending';
+        withdrawal.adminNotes = error.message || 'Retrait cree sans envoi automatique.';
+        await withdrawal.save();
+      }
+    }
+
+    await withdrawal.populate('partner');
+
+    response.status(201).json({
+      item: buildWithdrawalRecord(withdrawal),
     });
   }),
 );
@@ -700,10 +994,19 @@ router.get(
   requireAuth,
   requireRole('admin'),
   asyncHandler(async (request, response) => {
-    const { q = '', payoutStatus, network, year, month, range } = request.query;
+    const {
+      q = '',
+      payoutStatus,
+      withdrawalStatus,
+      network,
+      year,
+      month,
+      range,
+    } = request.query;
     const filters = {
       status: 'success',
     };
+    const withdrawalFilters = {};
 
     if (payoutStatus && payoutStatus !== 'Tous') {
       filters.payoutStatus = String(payoutStatus);
@@ -711,20 +1014,35 @@ router.get(
 
     if (network && network !== 'Tous') {
       filters.network = String(network);
+      withdrawalFilters.network = String(network);
+    }
+
+    if (withdrawalStatus && withdrawalStatus !== 'Tous') {
+      withdrawalFilters.status = String(withdrawalStatus);
     }
 
     const paidAt = buildFinanceRangeFilter(range, year, month);
     if (paidAt) {
       filters.paidAt = paidAt;
+      withdrawalFilters.requestedAt = paidAt;
     }
 
-    const payments = await ReservationPayment.find(filters)
-      .populate('customer')
-      .populate('partner')
-      .populate('venue')
-      .populate('booking')
-      .sort({ paidAt: -1, createdAt: -1 })
-      .limit(4000);
+    const [payments, rawWithdrawals, payoutBalance] = await Promise.all([
+      ReservationPayment.find(filters)
+        .populate('customer')
+        .populate('partner')
+        .populate('venue')
+        .populate('booking')
+        .sort({ paidAt: -1, createdAt: -1 })
+        .limit(4000),
+      PartnerWithdrawal.find(withdrawalFilters)
+        .populate('partner')
+        .sort({ requestedAt: -1, createdAt: -1 })
+        .limit(3000),
+      isCinetpayPayoutConfigured()
+        ? checkCinetpayTransferBalance().catch(() => null)
+        : Promise.resolve(null),
+    ]);
 
     const query = String(q).trim().toLowerCase();
     const records = payments
@@ -752,10 +1070,65 @@ router.get(
         return haystack.includes(query);
       });
 
+    const partnerTotalsMap = new Map();
+    for (const record of records) {
+      const partnerId = record.partner?.id || 'unknown';
+      const existing = partnerTotalsMap.get(partnerId) || {
+        partner: record.partner,
+        reservations: 0,
+        grossAmount: 0,
+        platformFeeAmount: 0,
+        partnerNetAmount: 0,
+      };
+      existing.reservations += 1;
+      existing.grossAmount += record.payment.grossAmount || 0;
+      existing.platformFeeAmount += record.payment.platformFeeAmount || 0;
+      existing.partnerNetAmount += record.payment.partnerNetAmount || 0;
+      partnerTotalsMap.set(partnerId, existing);
+    }
+
+    const withdrawals = await Promise.all(
+      rawWithdrawals.map(async (withdrawal) => {
+        if (
+          isCinetpayPayoutConfigured() &&
+          (withdrawal.status === 'pending' || withdrawal.status === 'processing')
+        ) {
+          return buildWithdrawalRecord(await syncWithdrawalFromProvider(withdrawal));
+        }
+        return buildWithdrawalRecord(withdrawal);
+      }),
+    ).then((items) =>
+      items.filter((record) => {
+        if (!query) return true;
+        const haystack = [
+          record.withdrawal.clientTransferId,
+          record.withdrawal.cinetpayTransferId,
+          record.withdrawal.phoneNumber,
+          record.withdrawal.accountName,
+          record.withdrawal.network,
+          record.withdrawal.status,
+          record.partner?.fullName,
+          record.partner?.email,
+          record.partner?.partnerProfile?.businessName,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      }),
+    );
+
     response.json({
       item: {
         summary: buildReservationFinanceSummary(records),
         items: records,
+        partnerTotals: Array.from(partnerTotalsMap.values()).sort(
+          (left, right) => right.partnerNetAmount - left.partnerNetAmount,
+        ),
+        withdrawalsSummary: summarizeWithdrawals(withdrawals),
+        withdrawals,
+        payoutProviderAvailableBalance:
+          payoutBalance?.available != null ? Number(payoutBalance.available) : null,
       },
     });
   }),
@@ -794,6 +1167,73 @@ router.patch(
     response.json({
       item: buildReservationPaymentRecord(payment),
     });
+  }),
+);
+
+router.patch(
+  '/finance/admin/withdrawals/:id',
+  requireAuth,
+  requireRole('admin'),
+  asyncHandler(async (request, response) => {
+    const body = adminWithdrawalUpdateSchema.parse(request.body);
+    const withdrawal = await PartnerWithdrawal.findById(request.params.id).populate(
+      'partner',
+    );
+
+    if (!withdrawal) {
+      return response.status(404).json({
+        message: 'Retrait introuvable.',
+      });
+    }
+
+    withdrawal.adminNotes = body.adminNotes || withdrawal.adminNotes;
+    withdrawal.status = body.status;
+    withdrawal.processedAt = new Date();
+    if (body.status === 'paid') {
+      withdrawal.paidAt = new Date();
+    }
+    await withdrawal.save();
+
+    response.json({
+      item: buildWithdrawalRecord(withdrawal),
+    });
+  }),
+);
+
+router.all(
+  '/finance/payout/notify',
+  asyncHandler(async (request, response) => {
+    const clientTransferId =
+      request.body?.client_transaction_id ||
+      request.query?.client_transaction_id ||
+      '';
+    const transactionId =
+      request.body?.transaction_id || request.query?.transaction_id || '';
+    const lot = request.body?.lot || request.query?.lot || '';
+
+    if (!clientTransferId && !transactionId && !lot) {
+      response.json({ success: true });
+      return;
+    }
+
+    const withdrawal = await PartnerWithdrawal.findOne({
+      $or: [
+        ...(clientTransferId ? [{ clientTransferId }] : []),
+        ...(transactionId ? [{ cinetpayTransferId: transactionId }] : []),
+        ...(lot ? [{ lot }] : []),
+      ],
+    });
+
+    if (!withdrawal) {
+      response.json({ success: true });
+      return;
+    }
+
+    if (isCinetpayPayoutConfigured()) {
+      await syncWithdrawalFromProvider(withdrawal).catch(() => null);
+    }
+
+    response.json({ success: true });
   }),
 );
 

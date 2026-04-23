@@ -2,9 +2,24 @@ import { env } from '../config/env.js';
 
 const CINETPAY_INIT_URL = 'https://api-checkout.cinetpay.com/v2/payment';
 const CINETPAY_CHECK_URL = 'https://api-checkout.cinetpay.com/v2/payment/check';
+const CINETPAY_TRANSFER_AUTH_URL = 'https://client.cinetpay.com/v1/auth/login';
+const CINETPAY_TRANSFER_BALANCE_URL =
+  'https://client.cinetpay.com/v1/transfer/check/balance';
+const CINETPAY_TRANSFER_SEND_URL =
+  'https://client.cinetpay.com/v1/transfer/money/send/contact';
+const CINETPAY_TRANSFER_CHECK_URL =
+  'https://client.cinetpay.com/v1/transfer/check/money';
 
 export function isCinetpayConfigured() {
   return Boolean(env.CINETPAY_APIKEY && env.CINETPAY_SITE_ID);
+}
+
+export function isCinetpayPayoutConfigured() {
+  return Boolean(
+    env.CINETPAY_APIKEY &&
+      env.CINETPAY_PAYOUT_PASSWORD &&
+      (env.CINETPAY_PAYOUT_NOTIFY_URL || env.PUBLIC_BASE_URL),
+  );
 }
 
 export function mapCinetpayStatus(payload) {
@@ -24,6 +39,21 @@ export function mapCinetpayStatus(payload) {
   return 'processing';
 }
 
+export function mapCinetpayTransferStatus(payload) {
+  const item = Array.isArray(payload?.data) ? payload.data[0] : payload?.data;
+  const treatmentStatus = String(
+    item?.treatment_status || item?.treatmentStatus || '',
+  ).toUpperCase();
+
+  if (treatmentStatus === 'VAL') return 'paid';
+  if (treatmentStatus === 'REJ' || treatmentStatus === 'REJECTED') {
+    return 'failed';
+  }
+  if (treatmentStatus === 'ANN') return 'rejected';
+  if (treatmentStatus) return 'processing';
+  return 'pending';
+}
+
 function resolveNotifyUrl() {
   if (env.CINETPAY_NOTIFY_URL) return env.CINETPAY_NOTIFY_URL;
   if (env.PUBLIC_BASE_URL) {
@@ -36,6 +66,182 @@ function resolveReturnUrl() {
   if (env.CINETPAY_RETURN_URL) return env.CINETPAY_RETURN_URL;
   if (env.PUBLIC_BASE_URL) return env.PUBLIC_BASE_URL;
   return '';
+}
+
+function resolvePayoutNotifyUrl() {
+  if (env.CINETPAY_PAYOUT_NOTIFY_URL) return env.CINETPAY_PAYOUT_NOTIFY_URL;
+  if (env.PUBLIC_BASE_URL) {
+    return `${env.PUBLIC_BASE_URL.replace(/\/$/, '')}/api/bookings/finance/payout/notify`;
+  }
+  return '';
+}
+
+async function parseJsonResponse(response) {
+  return response.json().catch(() => ({}));
+}
+
+async function generateCinetpayTransferToken() {
+  if (!isCinetpayPayoutConfigured()) {
+    throw new Error(
+      'CinetPay payout n est pas configure. Ajoutez CINETPAY_PAYOUT_PASSWORD et une URL de notification.',
+    );
+  }
+
+  const body = new URLSearchParams({
+    apikey: env.CINETPAY_APIKEY,
+    password: env.CINETPAY_PAYOUT_PASSWORD,
+  });
+
+  const response = await fetch(`${CINETPAY_TRANSFER_AUTH_URL}?lang=fr`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'MeevoBackend/1.0',
+    },
+    body,
+  });
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok || Number(payload?.code) !== 0) {
+    throw new Error(
+      payload?.description?.toString() ||
+        payload?.message?.toString() ||
+        'Authentification payout CinetPay impossible.',
+    );
+  }
+
+  const token = payload?.data?.token?.toString?.() || '';
+  if (!token) {
+    throw new Error('Token payout CinetPay introuvable.');
+  }
+
+  return token;
+}
+
+export async function checkCinetpayTransferBalance() {
+  const token = await generateCinetpayTransferToken();
+  const url = new URL(CINETPAY_TRANSFER_BALANCE_URL);
+  url.searchParams.set('token', token);
+  url.searchParams.set('lang', 'fr');
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'MeevoBackend/1.0',
+    },
+  });
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok || Number(payload?.code) !== 0) {
+    throw new Error(
+      payload?.description?.toString() ||
+        payload?.message?.toString() ||
+        'Lecture du solde payout CinetPay impossible.',
+    );
+  }
+
+  return payload?.data ?? {};
+}
+
+export async function initiateCinetpayTransfer({
+  clientTransferId,
+  amount,
+  phoneNumber,
+  prefix = env.CINETPAY_PAYOUT_PREFIX || '228',
+  paymentMethod = '',
+}) {
+  const token = await generateCinetpayTransferToken();
+  const notifyUrl = resolvePayoutNotifyUrl();
+  if (!notifyUrl) {
+    throw new Error('URL de notification payout CinetPay manquante.');
+  }
+
+  let safeAmount = Math.max(5, Math.round(Number(amount) || 0));
+  safeAmount = Math.floor(safeAmount / 5) * 5;
+  if (safeAmount <= 0) {
+    throw new Error('Montant de retrait invalide.');
+  }
+
+  const transferPayload = [
+    {
+      prefix: String(prefix || '228').replace(/\D/g, ''),
+      phone: String(phoneNumber || '').replace(/\D/g, ''),
+      amount: safeAmount,
+      client_transaction_id: clientTransferId,
+      notify_url: notifyUrl,
+      ...(paymentMethod ? { payment_method: paymentMethod } : {}),
+    },
+  ];
+
+  const body = new URLSearchParams({
+    data: JSON.stringify(transferPayload),
+  });
+
+  const response = await fetch(`${CINETPAY_TRANSFER_SEND_URL}?token=${encodeURIComponent(token)}&lang=fr`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'MeevoBackend/1.0',
+    },
+    body,
+  });
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok || Number(payload?.code) !== 0) {
+    throw new Error(
+      payload?.description?.toString() ||
+        payload?.message?.toString() ||
+        'Envoi du retrait CinetPay impossible.',
+    );
+  }
+
+  const item = Array.isArray(payload?.data) ? payload.data[0] : payload?.data;
+  return {
+    raw: payload,
+    item,
+    internalStatus: mapCinetpayTransferStatus({ data: item }),
+  };
+}
+
+export async function checkCinetpayTransferStatus({
+  transactionId,
+  clientTransferId,
+  lot,
+}) {
+  const token = await generateCinetpayTransferToken();
+  const url = new URL(CINETPAY_TRANSFER_CHECK_URL);
+  url.searchParams.set('token', token);
+  url.searchParams.set('lang', 'fr');
+  if (transactionId) {
+    url.searchParams.set('transaction_id', transactionId);
+  }
+  if (clientTransferId) {
+    url.searchParams.set('client_transaction_id', clientTransferId);
+  }
+  if (lot) {
+    url.searchParams.set('lot', lot);
+  }
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'MeevoBackend/1.0',
+    },
+  });
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok || Number(payload?.code) !== 0) {
+    throw new Error(
+      payload?.description?.toString() ||
+        payload?.message?.toString() ||
+        'Verification du retrait CinetPay impossible.',
+    );
+  }
+
+  return {
+    ...payload,
+    internalStatus: mapCinetpayTransferStatus(payload),
+  };
 }
 
 export async function initiateCinetpayPayment({
@@ -95,7 +301,7 @@ export async function initiateCinetpayPayment({
     }),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
     throw new Error(
@@ -145,7 +351,7 @@ export async function checkCinetpayPaymentStatus(transactionId) {
     }),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
     throw new Error(

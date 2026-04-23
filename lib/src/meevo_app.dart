@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -472,12 +472,10 @@ class _MobileShell extends StatelessWidget {
 class _DesktopTopBar extends StatelessWidget {
   const _DesktopTopBar({
     required this.state,
-    this.isDashboardContext = false,
     this.isHome = false,
   });
 
   final MeevoState state;
-  final bool isDashboardContext;
   final bool isHome;
 
   @override
@@ -522,14 +520,14 @@ class _DesktopTopBar extends StatelessWidget {
                   onPressed: () => _openProviders(context, isDesktop: true),
                   child: const Text('Prestataires'),
                 ),
-                if (state.needsPartnerSubscription && !isDashboardContext) ...[
+                if (state.needsPartnerSubscription) ...[
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () => _openPartnerSubscriptionPage(context),
                     child: const Text('Abonnement'),
                   ),
                 ],
-                if (state.hasPartnerAccess && !isDashboardContext) ...[
+                if (state.hasPartnerAccess) ...[
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () => _openDashboard(context),
@@ -3873,7 +3871,7 @@ class _VenueHeroMediaState extends State<_VenueHeroMedia> {
                   if (widget.onOpenMaps != null)
                     _HeroActionButton(
                       icon: Icons.map_outlined,
-                      label: 'Maps',
+                      label: 'Localisation',
                       isPrimary: false,
                       onTap: widget.onOpenMaps!,
                     ),
@@ -5815,6 +5813,64 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     return DateFormat('dd MMM yyyy, HH:mm', 'fr_FR').format(parsed.toLocal());
   }
 
+  String _subscriptionStatusLabel(PartnerSubscriptionData? subscription) {
+    if (subscription == null) {
+      return 'A activer';
+    }
+    if (subscription.isActive) {
+      return 'Actif';
+    }
+    return switch (subscription.status) {
+      'pending' => 'En attente',
+      'expired' => 'Expire',
+      'cancelled' => 'Annule',
+      _ => 'Inactif',
+    };
+  }
+
+  List<_WorkspaceNavItem> _buildWorkspaceNavItems(
+    BuildContext context,
+    MeevoState state,
+  ) {
+    return [
+      _WorkspaceNavItem(
+        label: 'Vue',
+        icon: Icons.tune_outlined,
+        selected: _section == 'overview',
+        onTap: () => setState(() => _section = 'overview'),
+      ),
+      _WorkspaceNavItem(
+        label: 'Paiement',
+        icon: Icons.payments_outlined,
+        selected: _section == 'plans',
+        onTap: () => setState(() => _section = 'plans'),
+      ),
+      _WorkspaceNavItem(
+        label: 'Suivi',
+        icon: Icons.sync_outlined,
+        selected: _section == 'payment',
+        onTap: () => setState(() => _section = 'payment'),
+      ),
+      _WorkspaceNavItem(
+        label: 'Historique',
+        icon: Icons.history_outlined,
+        selected: _section == 'history',
+        onTap: () => setState(() => _section = 'history'),
+      ),
+      _WorkspaceNavItem(
+        label: 'Dashboard',
+        icon: Icons.dashboard_customize_outlined,
+        onTap: () => _openDashboard(context),
+      ),
+      if (state.hasVenuePartnerAccess)
+        _WorkspaceNavItem(
+          label: 'Revenu',
+          icon: Icons.account_balance_wallet_outlined,
+          onTap: () => _openPartnerRevenuePage(context),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MeevoState>();
@@ -5845,93 +5901,144 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
         _lastCheckout?.payment ??
         (overview.payments.isNotEmpty ? overview.payments.first : null);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FF),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        foregroundColor: _meevoDeepBlue,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          'Abonnement partenaire',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          isDesktop ? 28 : 18,
-          isDesktop ? 22 : 18,
-          isDesktop ? 28 : 18,
-          30,
-        ),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _PartnerSubscriptionHero(
-                    businessName:
-                        state.currentUser?.partnerProfile?.businessName ??
-                        'Meevo',
-                    partnerType:
-                        state.currentUser?.partnerProfile?.partnerType ??
-                        'Partenaire',
-                  ),
-                  const SizedBox(height: 18),
-                  _SectionPanel(
-                    title: 'Navigation abonnement',
-                    child: _SubscriptionSectionSelector(
+    return _StateToastListener(
+      child: _WorkspaceScaffold(
+        title: 'Espace partenaire',
+        subtitle: 'Navigation laterale sur grand ecran, menu sur mobile.',
+        navItems: _buildWorkspaceNavItems(context, state),
+        mobileBottomNavIndex: 3,
+        bottomNavPartnerMode: true,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 28 : 18,
+            isDesktop ? 22 : 18,
+            isDesktop ? 28 : 18,
+            30,
+          ),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1080),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _PartnerSubscriptionHero(
+                      businessName:
+                          state.currentUser?.partnerProfile?.businessName ??
+                          'Meevo',
+                      partnerType:
+                          state.currentUser?.partnerProfile?.partnerType ??
+                          'Partenaire',
+                    ),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _InlineStatPill(
+                          label: 'Statut',
+                          value: _subscriptionStatusLabel(subscription),
+                          emphasis: true,
+                        ),
+                        _InlineStatPill(
+                          label: 'Expiration',
+                          value: subscription?.endsAt == null
+                              ? '--'
+                              : _formatDisplayDate(subscription!.endsAt!),
+                        ),
+                        _InlineStatPill(
+                          label: 'Tarif',
+                          value: '${_formatMoney(monthlyPrice, 'FCFA')} / mois',
+                          emphasis: true,
+                        ),
+                        _InlineStatPill(
+                          label: 'Dernier paiement',
+                          value: recentPayment?.status ?? 'Aucun',
+                        ),
+                      ],
+                    ),
+                    if (subscription?.status == 'pending') ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: Color(0xFFF59E0B),
+                              width: 3,
+                            ),
+                          ),
+                          color: Color(0xFFFFFBEB),
+                        ),
+                        child: const Text(
+                          'Un paiement est encore en attente. Validez-le sur CinetPay puis revenez verifier le statut.',
+                          style: TextStyle(color: _meevoMuted, height: 1.55),
+                        ),
+                      ),
+                    ],
+                    if (!overview.paymentConfigured) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Le paiement CinetPay n est pas encore configure sur le serveur. L abonnement restera en lecture seule tant que cette configuration n est pas terminee.',
+                        style: TextStyle(
+                          color: Color(0xFFB42318),
+                          fontWeight: FontWeight.w700,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    _SubscriptionSectionSelector(
                       isDesktop: isDesktop,
                       currentSection: _section,
                       isActive: subscription?.isActive == true,
                       hasRecentPayment: recentPayment != null,
                       onSelect: (section) => setState(() => _section = section),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 240),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    child: KeyedSubtree(
-                      key: ValueKey(_section),
-                      child: switch (_section) {
-                        'plans' => _buildSubscriptionPlansSectionV2(
-                          context: context,
-                          isDesktop: isDesktop,
-                          state: state,
-                          overview: overview,
-                          quote: quote,
-                          presets: presets,
-                          networks: networks,
-                        ),
-                        'payment' => _buildSubscriptionTrackingSectionV2(
-                          context: context,
-                          state: state,
-                          recentPayment: recentPayment,
-                        ),
-                        'history' => _buildSubscriptionHistorySectionV2(
-                          overview: overview,
-                        ),
-                        _ => _buildSubscriptionOverviewSectionV2(
-                          context: context,
-                          isDesktop: isDesktop,
-                          state: state,
-                          subscription: subscription,
-                          recentPayment: recentPayment,
-                          monthlyPrice: monthlyPrice,
-                        ),
-                      },
+                    const SizedBox(height: 22),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      child: KeyedSubtree(
+                        key: ValueKey(_section),
+                        child: switch (_section) {
+                          'plans' => _buildSubscriptionPlansSectionV2(
+                            context: context,
+                            isDesktop: isDesktop,
+                            state: state,
+                            overview: overview,
+                            quote: quote,
+                            presets: presets,
+                            networks: networks,
+                          ),
+                          'payment' => _buildSubscriptionTrackingSectionV2(
+                            context: context,
+                            state: state,
+                            recentPayment: recentPayment,
+                          ),
+                          'history' => _buildSubscriptionHistorySectionV2(
+                            overview: overview,
+                          ),
+                          _ => _buildSubscriptionOverviewSectionV2(
+                            context: context,
+                            isDesktop: isDesktop,
+                            state: state,
+                            subscription: subscription,
+                            recentPayment: recentPayment,
+                            monthlyPrice: monthlyPrice,
+                          ),
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -6563,21 +6670,11 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     required SubscriptionPaymentData? recentPayment,
     required double monthlyPrice,
   }) {
-    final statusLabel = subscription == null
-        ? 'A activer'
-        : subscription.isActive
-        ? 'Actif'
-        : switch (subscription.status) {
-            'pending' => 'En attente',
-            'expired' => 'Expire',
-            'cancelled' => 'Annule',
-            _ => 'Inactif',
-          };
-    final summaryCards = [
+    final summaryRows = [
       (
         Icons.workspace_premium_outlined,
         'Statut',
-        statusLabel,
+        _subscriptionStatusLabel(subscription),
         const Color(0xFF4F46E5),
       ),
       (
@@ -6603,149 +6700,65 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     ];
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (subscription?.status == 'pending')
-          Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7D6),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFF4D76C)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.pending_actions_outlined,
-                      color: Color(0xFF9A6700),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Paiement en attente',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: _meevoDeepBlue,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Votre acces partenaire reste bloque tant que CinetPay ne confirme pas le paiement. Continuez maintenant ou relancez une nouvelle formule.',
-                  style: TextStyle(color: _meevoMuted, height: 1.55),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: () => setState(() => _section = 'payment'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _meevoYellow,
-                        foregroundColor: _meevoText,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('Continuer'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => setState(() => _section = 'plans'),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: const Icon(Icons.restart_alt),
-                      label: const Text('Changer'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+        Text(
+          subscription?.isActive == true
+              ? 'Votre acces partenaire est actif jusqu au ${_dateLabel(subscription?.endsAt)}.'
+              : 'Choisissez une formule puis reglez le paiement pour debloquer votre dashboard partenaire.',
+          style: const TextStyle(color: _meevoMuted, height: 1.6),
+        ),
+        const SizedBox(height: 18),
+        for (var index = 0; index < summaryRows.length; index++) ...[
+          _SubscriptionOverviewStatCard(
+            icon: summaryRows[index].$1,
+            label: summaryRows[index].$2,
+            value: summaryRows[index].$3,
+            accent: summaryRows[index].$4,
           ),
-        _SectionPanel(
-          title: subscription?.isActive == true
-              ? 'Vue partenaire'
-              : 'Vue generale',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+          if (index < summaryRows.length - 1)
+            const Divider(height: 22, color: Color(0xFFEAE7F7)),
+        ],
+        const SizedBox(height: 22),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            FilledButton.icon(
+              onPressed: () => setState(() => _section = 'plans'),
+              style: FilledButton.styleFrom(
+                backgroundColor: subscription?.isActive == true
+                    ? _meevoDeepBlue
+                    : _meevoYellow,
+                foregroundColor: subscription?.isActive == true
+                    ? Colors.white
+                    : _meevoText,
+              ),
+              icon: const Icon(Icons.payments_outlined),
+              label: Text(
                 subscription?.isActive == true
-                    ? 'Votre acces partenaire est actif jusqu au ${_dateLabel(subscription?.endsAt)}.'
-                    : 'Choisissez une formule puis reglez le paiement pour debloquer votre dashboard.',
-                style: const TextStyle(color: _meevoMuted, height: 1.6),
+                    ? 'Renouveler l abonnement'
+                    : 'Choisir une formule',
               ),
-              const SizedBox(height: 16),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isDesktop ? 4 : 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: isDesktop ? 1.45 : 1.12,
-                children: [
-                  for (final card in summaryCards)
-                    _SubscriptionOverviewStatCard(
-                      icon: card.$1,
-                      label: card.$2,
-                      value: card.$3,
-                      accent: card.$4,
-                    ),
-                ],
+            ),
+            if (recentPayment != null)
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _section = 'payment'),
+                icon: const Icon(Icons.sync_outlined),
+                label: const Text('Suivre le paiement'),
               ),
-              const SizedBox(height: 16),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isDesktop ? 4 : 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: isDesktop ? 1.65 : 1.28,
-                children: [
-                  _SubscriptionActionCard(
-                    icon: Icons.workspace_premium_outlined,
-                    title: subscription?.isActive == true
-                        ? 'Renouveler'
-                        : 'Choisir',
-                    subtitle: 'Formules et paiement',
-                    isSelected: false,
-                    onTap: () => setState(() => _section = 'plans'),
-                  ),
-                  _SubscriptionActionCard(
-                    icon: Icons.payments_outlined,
-                    title: 'Suivi',
-                    subtitle: 'Verifier CinetPay',
-                    isSelected: false,
-                    onTap: () => setState(() => _section = 'payment'),
-                  ),
-                  _SubscriptionActionCard(
-                    icon: Icons.history_outlined,
-                    title: 'Historique',
-                    subtitle: 'Tous les paiements',
-                    isSelected: false,
-                    onTap: () => setState(() => _section = 'history'),
-                  ),
-                  _SubscriptionActionCard(
-                    icon: Icons.dashboard_customize_outlined,
-                    title: 'Dashboard',
-                    subtitle: subscription?.isActive == true
-                        ? 'Ouvrir l espace'
-                        : 'Acces bloque',
-                    isSelected: false,
-                    onTap: subscription?.isActive == true
-                        ? () => _openDashboard(context)
-                        : () => setState(() => _section = 'plans'),
-                  ),
-                ],
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _section = 'history'),
+              icon: const Icon(Icons.history_outlined),
+              label: const Text('Voir l historique'),
+            ),
+            if (subscription?.isActive == true)
+              OutlinedButton.icon(
+                onPressed: () => _openDashboard(context),
+                icon: const Icon(Icons.dashboard_customize_outlined),
+                label: const Text('Ouvrir le dashboard'),
               ),
-            ],
-          ),
+          ],
         ),
       ],
     );
@@ -6760,15 +6773,33 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     required List<SubscriptionPresetData> presets,
     required List<SubscriptionNetworkData> networks,
   }) {
-    final planGrid = GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isDesktop ? 4 : 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: isDesktop ? 0.96 : 0.92,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final preset in presets)
+        const Text(
+          'Choisissez votre formule, ajustez la duree si besoin puis lancez le paiement mobile money.',
+          style: TextStyle(color: _meevoMuted, height: 1.6),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Nombre de mois: $_months',
+          style: const TextStyle(
+            color: _meevoDeepBlue,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Slider(
+          value: _months.toDouble(),
+          min: 1,
+          max: overview.maxMonths.toDouble(),
+          divisions: overview.maxMonths - 1,
+          activeColor: _meevoYellow,
+          inactiveColor: const Color(0xFFE7E0FB),
+          label: '$_months mois',
+          onChanged: (value) => setState(() => _months = value.round()),
+        ),
+        const SizedBox(height: 10),
+        for (final preset in presets) ...[
           _SubscriptionPlanCard(
             title: preset.title,
             subtitle: preset.subtitle,
@@ -6780,10 +6811,12 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
             compact: !isDesktop,
             onTap: () => setState(() => _months = preset.months),
           ),
+          const SizedBox(height: 10),
+        ],
         _SubscriptionPlanCard(
           title: 'Sur mesure',
-          subtitle: 'Choisissez votre duree',
-          badge: '2 a ${overview.maxMonths} mois',
+          subtitle: 'Choisissez la duree exacte dont vous avez besoin',
+          badge: '1 a ${overview.maxMonths} mois',
           amountLabel: _formatMoney(quote['total'] ?? 0, 'FCFA'),
           metaLabel:
               '$_months mois • remise ${_formatMoney(quote['discount'] ?? 0, 'FCFA')}',
@@ -6791,199 +6824,96 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
           compact: !isDesktop,
           onTap: () {},
         ),
+        const SizedBox(height: 20),
+        const Divider(color: Color(0xFFEAE7F7)),
+        const SizedBox(height: 18),
+        const Text(
+          'Reseau de paiement',
+          style: TextStyle(
+            color: _meevoDeepBlue,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final network in networks) ...[
+          _SubscriptionNetworkCard(
+            label: network.label,
+            subtitle: network.paymentMethodLabel,
+            isSelected: _network == network.code,
+            compact: !isDesktop,
+            onTap: () => setState(() => _network = network.code),
+          ),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 14),
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Numero mobile money',
+            hintText: '90 00 00 00',
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Recapitulatif',
+          style: TextStyle(
+            color: _meevoDeepBlue,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _SubscriptionAmountRow(
+          label: 'Base',
+          value: _formatMoney(quote['gross'] ?? 0, 'FCFA'),
+          valueColor: _meevoDeepBlue,
+        ),
+        const SizedBox(height: 8),
+        _SubscriptionAmountRow(
+          label: 'Remise',
+          value: '- ${_formatMoney(quote['discount'] ?? 0, 'FCFA')}',
+          valueColor: const Color(0xFF16A34A),
+        ),
+        const SizedBox(height: 8),
+        _SubscriptionAmountRow(
+          label: 'Total a payer',
+          value: _formatMoney(quote['total'] ?? 0, 'FCFA'),
+          valueColor: _meevoDeepBlue,
+          emphasis: true,
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            FilledButton.icon(
+              onPressed:
+                  !overview.paymentConfigured || state.isSubscriptionStarting
+                  ? null
+                  : _startCheckout,
+              style: FilledButton.styleFrom(
+                backgroundColor: _meevoYellow,
+                foregroundColor: _meevoText,
+              ),
+              icon: state.isSubscriptionStarting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.payments_outlined),
+              label: const Text('Payer maintenant'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _section = 'payment'),
+              icon: const Icon(Icons.sync_outlined),
+              label: const Text('Verifier le paiement'),
+            ),
+          ],
+        ),
       ],
-    );
-
-    final quoteBox = Container(
-      padding: EdgeInsets.all(isDesktop ? 20 : 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1736),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Recapitulatif',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _SubscriptionAmountRow(
-            label: 'Base',
-            value: _formatMoney(quote['gross'] ?? 0, 'FCFA'),
-          ),
-          const SizedBox(height: 8),
-          _SubscriptionAmountRow(
-            label: 'Remise',
-            value: '- ${_formatMoney(quote['discount'] ?? 0, 'FCFA')}',
-            valueColor: const Color(0xFF95F08A),
-          ),
-          const SizedBox(height: 8),
-          _SubscriptionAmountRow(
-            label: 'Total a payer',
-            value: _formatMoney(quote['total'] ?? 0, 'FCFA'),
-            emphasis: true,
-          ),
-        ],
-      ),
-    );
-
-    final paymentBox = Container(
-      padding: EdgeInsets.all(isDesktop ? 20 : 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFEAE7F7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Paiement',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: _meevoDeepBlue,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            overview.paymentConfigured
-                ? 'Choisissez votre reseau puis payez pour debloquer votre acces.'
-                : 'CinetPay n est pas encore configure sur le serveur.',
-            style: TextStyle(
-              color: overview.paymentConfigured
-                  ? _meevoMuted
-                  : const Color(0xFFB42318),
-              height: 1.6,
-            ),
-          ),
-          const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: isDesktop ? 1.85 : 1.42,
-            children: [
-              for (final network in networks)
-                _SubscriptionNetworkCard(
-                  label: network.label,
-                  subtitle: network.paymentMethodLabel,
-                  isSelected: _network == network.code,
-                  compact: !isDesktop,
-                  onTap: () => setState(() => _network = network.code),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'Numero mobile money',
-              hintText: '90 00 00 00',
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed:
-                    !overview.paymentConfigured || state.isSubscriptionStarting
-                    ? null
-                    : _startCheckout,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _meevoYellow,
-                  foregroundColor: _meevoText,
-                ),
-                icon: state.isSubscriptionStarting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.payments_outlined),
-                label: const Text('Payer'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => setState(() => _section = 'payment'),
-                icon: const Icon(Icons.sync_outlined),
-                label: const Text('Suivi'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-
-    return _SectionPanel(
-      title: 'Formules et paiement',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Choisissez votre formule, ajustez la duree et passez ensuite au paiement mobile money.',
-            style: TextStyle(color: _meevoMuted, height: 1.6),
-          ),
-          const SizedBox(height: 18),
-          planGrid,
-          const SizedBox(height: 18),
-          Container(
-            padding: EdgeInsets.all(isDesktop ? 18 : 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F7FC),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFEAE7F7)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Nombre de mois: $_months',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: _meevoDeepBlue,
-                  ),
-                ),
-                Slider(
-                  value: _months.toDouble(),
-                  min: 1,
-                  max: overview.maxMonths.toDouble(),
-                  divisions: overview.maxMonths - 1,
-                  activeColor: _meevoYellow,
-                  inactiveColor: const Color(0xFFE7E0FB),
-                  label: '$_months mois',
-                  onChanged: (value) {
-                    setState(() => _months = value.round());
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (isDesktop)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 5, child: paymentBox),
-                const SizedBox(width: 16),
-                Expanded(flex: 4, child: quoteBox),
-              ],
-            )
-          else
-            Column(
-              children: [quoteBox, const SizedBox(height: 16), paymentBox],
-            ),
-        ],
-      ),
     );
   }
 
@@ -6992,103 +6922,139 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     required MeevoState state,
     required SubscriptionPaymentData? recentPayment,
   }) {
-    final isDesktop = MediaQuery.sizeOf(context).width >= 980;
     if (recentPayment == null) {
-      return const _SectionPanel(
-        title: 'Suivi du paiement',
-        child: _EmptyStateCard(
-          title: 'Aucun paiement en cours',
-          subtitle:
-              'Lancez une formule pour generer un paiement, puis revenez ici suivre son statut.',
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Aucun paiement actif pour le moment. Lancez une formule pour generer une tentative CinetPay.',
+            style: TextStyle(color: _meevoMuted, height: 1.6),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _section = 'plans'),
+            icon: const Icon(Icons.payments_outlined),
+            label: const Text('Aller au paiement'),
+          ),
+        ],
       );
     }
 
-    return _SectionPanel(
-      title: 'Suivi du paiement',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: isDesktop ? 3 : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: isDesktop ? 2.35 : 1.34,
-            children: [
-              _SubscriptionOverviewStatCard(
-                icon: Icons.tag_outlined,
-                label: 'Reference',
-                value: recentPayment.identifier,
-                accent: const Color(0xFF4F46E5),
-              ),
-              _SubscriptionOverviewStatCard(
-                icon: Icons.timelapse_outlined,
-                label: 'Statut',
-                value: recentPayment.status,
-                accent: _subscriptionPaymentStatusColor(recentPayment.status),
-              ),
-              _SubscriptionOverviewStatCard(
-                icon: Icons.payments_outlined,
-                label: 'Montant',
-                value: _formatMoney(recentPayment.totalAmount, 'FCFA'),
-                accent: const Color(0xFFF59E0B),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F7FC),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFEAE7F7)),
-            ),
-            child: const Text(
-              '1. Ouvrez CinetPay.\n2. Validez le paiement sur votre telephone.\n3. Revenez ici pour verifier le statut.\n4. Une fois reussi, votre acces partenaire se met a jour.',
-              style: TextStyle(color: _meevoMuted, height: 1.7),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed: () => _launchPayment(
-                  recentPayment.paymentUrl ?? _lastCheckout?.paymentUrl ?? '',
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _meevoYellow,
-                  foregroundColor: _meevoText,
-                ),
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Ouvrir CinetPay'),
-              ),
-              OutlinedButton.icon(
-                onPressed: state.isSubscriptionVerifying
-                    ? null
-                    : _verifyPayment,
-                icon: state.isSubscriptionVerifying
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-                label: const Text('Verifier'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => setState(() => _section = 'history'),
-                icon: const Icon(Icons.history_outlined),
-                label: const Text('Historique'),
-              ),
-            ],
-          ),
-        ],
+    final trackingRows = [
+      (
+        Icons.tag_outlined,
+        'Reference',
+        recentPayment.identifier,
+        const Color(0xFF4F46E5),
       ),
+      (
+        Icons.timelapse_outlined,
+        'Statut',
+        recentPayment.status,
+        _subscriptionPaymentStatusColor(recentPayment.status),
+      ),
+      (
+        Icons.payments_outlined,
+        'Montant',
+        _formatMoney(recentPayment.totalAmount, 'FCFA'),
+        const Color(0xFFF59E0B),
+      ),
+      (
+        Icons.phone_android_outlined,
+        'Reseau',
+        recentPayment.network == 'TOGOCEL' ? 'Yas / TMoney' : 'Moov / Flooz',
+        const Color(0xFF2563EB),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Suivez ici votre tentative CinetPay et relancez la verification une fois le paiement valide sur votre telephone.',
+          style: TextStyle(color: _meevoMuted, height: 1.6),
+        ),
+        const SizedBox(height: 18),
+        for (var index = 0; index < trackingRows.length; index++) ...[
+          _SubscriptionOverviewStatCard(
+            icon: trackingRows[index].$1,
+            label: trackingRows[index].$2,
+            value: trackingRows[index].$3,
+            accent: trackingRows[index].$4,
+          ),
+          if (index < trackingRows.length - 1)
+            const Divider(height: 22, color: Color(0xFFEAE7F7)),
+        ],
+        const SizedBox(height: 18),
+        for (final step in const [
+          'Ouvrez le lien CinetPay.',
+          'Validez le paiement mobile money sur votre telephone.',
+          'Revenez ensuite ici pour actualiser le statut.',
+          'Quand le statut passe a success, le dashboard partenaire se debloque.',
+        ]) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                margin: const EdgeInsets.only(top: 2),
+                decoration: BoxDecoration(
+                  color: _meevoYellow.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Icon(
+                  Icons.check,
+                  size: 14,
+                  color: _meevoPurple,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  step,
+                  style: const TextStyle(color: _meevoMuted, height: 1.55),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            FilledButton.icon(
+              onPressed: () => _launchPayment(
+                recentPayment.paymentUrl ?? _lastCheckout?.paymentUrl ?? '',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: _meevoYellow,
+                foregroundColor: _meevoText,
+              ),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Ouvrir CinetPay'),
+            ),
+            OutlinedButton.icon(
+              onPressed: state.isSubscriptionVerifying ? null : _verifyPayment,
+              icon: state.isSubscriptionVerifying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: const Text('Verifier maintenant'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _section = 'history'),
+              icon: const Icon(Icons.history_outlined),
+              label: const Text('Voir l historique'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -7098,70 +7064,60 @@ class _PartnerSubscriptionPageState extends State<_PartnerSubscriptionPage> {
     final historyPayments = overview.payments
         .where((payment) => _isFinalSubscriptionPaymentStatus(payment.status))
         .toList();
-    return _SectionPanel(
-      title: 'Historique abonnement',
-      child: historyPayments.isEmpty
-          ? const _EmptyStateCard(
-              title: 'Aucun paiement finalise pour le moment',
-              subtitle:
-                  'Les paiements en attente restent dans le suivi. Les paiements finalises apparaitront ici.',
-            )
-          : Column(
-              children: historyPayments.take(16).map((payment) {
-                return Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F7FC),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFEAE7F7)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: _meevoYellow.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(
-                          Icons.credit_score_outlined,
-                          color: _meevoPurple,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${payment.months} mois - ${_formatMoney(payment.totalAmount, 'FCFA')}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: _meevoDeepBlue,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${payment.network} • ${payment.status}',
-                              style: const TextStyle(color: _meevoMuted),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _dateLabel(payment.paidAt ?? payment.createdAt),
-                              style: const TextStyle(color: _meevoMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+    if (historyPayments.isEmpty) {
+      return const Text(
+        'Aucun paiement finalise pour le moment. Les paiements en attente restent dans le suivi.',
+        style: TextStyle(color: _meevoMuted, height: 1.6),
+      );
+    }
+
+    return Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 760),
+          child: DataTable(
+            headingRowColor: WidgetStatePropertyAll(
+              const Color(0xFFF7F6FB),
             ),
+            columns: const [
+              DataColumn(label: Text('Date / Heure')),
+              DataColumn(label: Text('Formule')),
+              DataColumn(label: Text('Reseau')),
+              DataColumn(label: Text('Statut')),
+              DataColumn(label: Text('Reference')),
+            ],
+            rows: [
+              for (final payment in historyPayments.take(24))
+                DataRow(
+                  cells: [
+                    DataCell(Text(_dateLabel(payment.paidAt ?? payment.createdAt))),
+                    DataCell(
+                      Text(
+                        '${payment.months} mois • ${_formatMoney(payment.totalAmount, 'FCFA')}',
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        payment.network == 'TOGOCEL'
+                            ? 'Yas / TMoney'
+                            : 'Moov / Flooz',
+                      ),
+                    ),
+                    DataCell(
+                      _AdminStatusBadge(
+                        label: payment.status,
+                        color: _subscriptionPaymentStatusColor(payment.status),
+                      ),
+                    ),
+                    DataCell(SelectableText(payment.identifier)),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -7205,27 +7161,41 @@ class _SubscriptionSectionSelector extends StatelessWidget {
       ('history', Icons.history_outlined, 'Historique', 'Tous les paiements'),
     ];
 
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isDesktop ? 4 : 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: isDesktop ? 1.55 : 1.45,
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: [
         for (final action in actions)
-          _SubscriptionActionCard(
-            icon: action.$2,
-            title: action.$3,
-            subtitle: action.$4,
-            isSelected: currentSection == action.$1,
-            onTap: () => onSelect(action.$1),
+          ChoiceChip(
+            avatar: Icon(
+              action.$2,
+              size: 18,
+              color: currentSection == action.$1 ? Colors.white : _meevoPurple,
+            ),
+            label: Text(action.$3),
+            selected: currentSection == action.$1,
+            onSelected: (_) => onSelect(action.$1),
+            selectedColor: _meevoDeepBlue,
+            labelStyle: TextStyle(
+              color: currentSection == action.$1 ? Colors.white : _meevoDeepBlue,
+              fontWeight: FontWeight.w700,
+            ),
+            side: BorderSide(
+              color: currentSection == action.$1
+                  ? _meevoDeepBlue
+                  : const Color(0xFFE7E0F4),
+            ),
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
           ),
       ],
     );
   }
 }
 
+// ignore: unused_element
 class _SubscriptionActionCard extends StatelessWidget {
   const _SubscriptionActionCard({
     required this.icon,
@@ -7327,38 +7297,45 @@ class _SubscriptionOverviewStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withValues(alpha: 0.16)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: accent, size: 22),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              color: _meevoMuted,
-              fontWeight: FontWeight.w700,
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _meevoDeepBlue,
-              fontWeight: FontWeight.w900,
-              fontSize: 17,
-            ),
+          child: Icon(icon, color: accent, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _meevoMuted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _meevoDeepBlue,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -7374,97 +7351,11 @@ class _PartnerSubscriptionHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.sizeOf(context).width >= 980;
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.96, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) =>
-          Transform.scale(scale: value, child: child),
-      child: Container(
-        padding: EdgeInsets.all(isDesktop ? 30 : 18),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F1736), Color(0xFF1D2F88), Color(0xFF5A28B2)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(isDesktop ? 34 : 28),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1D2F88).withValues(alpha: 0.18),
-              blurRadius: 26,
-              offset: const Offset(0, 16),
-            ),
-          ],
-        ),
-        child: isDesktop
-            ? Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.16),
-                            ),
-                          ),
-                          child: const Text(
-                            'Abonnement premium Meevo',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'Debloquez votre\nespace partenaire',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                height: 1.02,
-                              ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '$businessName est pret pour le mode $partnerType. Activez maintenant Moov ou Yas via CinetPay pour ouvrir le dashboard, les publications et les outils de gestion.',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.86),
-                            height: 1.7,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 22),
-                  const Expanded(child: _PartnerSubscriptionHeroStats()),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  _PartnerSubscriptionHeroText(),
-                  SizedBox(height: 18),
-                  _PartnerSubscriptionHeroStats(),
-                ],
-              ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 
+// ignore: unused_element
 class _PartnerSubscriptionHeroText extends StatelessWidget {
   const _PartnerSubscriptionHeroText();
 
@@ -7510,6 +7401,7 @@ class _PartnerSubscriptionHeroText extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _PartnerSubscriptionHeroStats extends StatelessWidget {
   const _PartnerSubscriptionHeroStats();
 
@@ -7611,90 +7503,98 @@ class _SubscriptionPlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(18),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         width: width,
-        padding: EdgeInsets.all(compact ? 14 : 18),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF141E4A) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isSelected ? _meevoYellow : const Color(0xFFEAE7F7),
-            width: isSelected ? 1.6 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? _meevoPurple.withValues(alpha: 0.14)
-                  : Colors.black.withValues(alpha: 0.04),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 16,
+          vertical: compact ? 13 : 15,
         ),
-        child: Column(
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFFBEB) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border(
+            left: BorderSide(
+              color: isSelected ? _meevoYellow : const Color(0xFFE7E0F4),
+              width: 3,
+            ),
+          ),
+        ),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              width: 22,
+              height: 22,
+              margin: const EdgeInsets.only(top: 2),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? _meevoYellow.withValues(alpha: 0.14)
-                    : const Color(0xFFF8F7FC),
+                    ? _meevoYellow.withValues(alpha: 0.22)
+                    : const Color(0xFFF7F6FB),
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: Text(
-                badge,
-                style: TextStyle(
-                  color: isSelected ? _meevoYellow : _meevoDeepBlue,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
+              child: Icon(
+                isSelected ? Icons.check : Icons.add,
+                size: 14,
+                color: isSelected ? _meevoPurple : _meevoMuted,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: compact ? 15 : 17,
+                      color: _meevoDeepBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: _meevoMuted,
+                      height: 1.45,
+                      fontSize: compact ? 12.5 : 13.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    metaLabel,
+                    style: TextStyle(
+                      color: _meevoMuted,
+                      fontSize: compact ? 12 : 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  amountLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: compact ? 16 : 18,
+                    color: _meevoPurple,
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: compact ? 16 : 22,
-                color: isSelected ? Colors.white : _meevoDeepBlue,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              maxLines: compact ? 3 : 4,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.82)
-                    : _meevoMuted,
-                height: 1.45,
-                fontSize: compact ? 13 : 15,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              amountLabel,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: compact ? 18 : 26,
-                color: isSelected ? _meevoYellow : _meevoPurple,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              metaLabel,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.76)
-                    : _meevoMuted,
-                fontSize: compact ? 12.5 : 14,
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  badge,
+                  style: TextStyle(
+                    color: isSelected ? _meevoDeepBlue : _meevoMuted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -7724,36 +7624,38 @@ class _SubscriptionNetworkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         width: width,
-        padding: EdgeInsets.all(compact ? 14 : 18),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 16,
+          vertical: compact ? 13 : 15,
+        ),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFFF7D6) : const Color(0xFFF8F7FC),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: isSelected ? _meevoYellow : const Color(0xFFEAE7F7),
+          color: isSelected ? const Color(0xFFFFFBEB) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border(
+            left: BorderSide(
+              color: isSelected ? _meevoYellow : const Color(0xFFEAE7F7),
+              width: 3,
+            ),
           ),
         ),
         child: Row(
           children: [
             Container(
-              width: compact ? 40 : 46,
-              height: compact ? 40 : 46,
+              width: compact ? 34 : 38,
+              height: compact ? 34 : 38,
               decoration: BoxDecoration(
-                gradient: isSelected
-                    ? const LinearGradient(
-                        colors: [_meevoYellow, Color(0xFFFFB300)],
-                      )
-                    : const LinearGradient(
-                        colors: [Color(0xFFEAE7F7), Color(0xFFF8F7FC)],
-                      ),
-                borderRadius: BorderRadius.circular(16),
+                color: isSelected
+                    ? _meevoYellow.withValues(alpha: 0.22)
+                    : const Color(0xFFF7F6FB),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Icon(
                 Icons.phone_android_outlined,
-                color: isSelected ? _meevoText : _meevoPurple,
+                color: isSelected ? _meevoPurple : _meevoMuted,
               ),
             ),
             const SizedBox(width: 12),
@@ -7766,7 +7668,7 @@ class _SubscriptionNetworkCard extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: _meevoDeepBlue,
-                      fontSize: compact ? 14 : 16,
+                      fontSize: compact ? 14 : 15,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -7776,7 +7678,7 @@ class _SubscriptionNetworkCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: _meevoMuted,
-                      fontSize: compact ? 12.5 : 14,
+                      fontSize: compact ? 12.5 : 13,
                     ),
                   ),
                 ],
@@ -7794,7 +7696,7 @@ class _SubscriptionAmountRow extends StatelessWidget {
   const _SubscriptionAmountRow({
     required this.label,
     required this.value,
-    this.valueColor = Colors.white,
+    this.valueColor = _meevoDeepBlue,
     this.emphasis = false,
   });
 
@@ -7811,7 +7713,7 @@ class _SubscriptionAmountRow extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: _meevoMuted,
               fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
             ),
           ),
@@ -9863,7 +9765,7 @@ class _OwnedVenueCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => _launchUrl(_buildVenueMapsUri(venue)!),
                 icon: const Icon(Icons.map_outlined),
-                label: const Text('Ouvrir Maps'),
+                label: const Text('Localisation'),
               ),
             ],
           ],
@@ -12596,6 +12498,210 @@ class _SectionPanel extends StatelessWidget {
   }
 }
 
+class _WorkspaceNavItem {
+  const _WorkspaceNavItem({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool selected;
+}
+
+class _WorkspaceScaffold extends StatelessWidget {
+  const _WorkspaceScaffold({
+    required this.title,
+    required this.navItems,
+    required this.child,
+    this.subtitle,
+    this.actions = const [],
+    this.mobileBottomNavIndex,
+    this.bottomNavPartnerMode = false,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<_WorkspaceNavItem> navItems;
+  final Widget child;
+  final List<Widget> actions;
+  final int? mobileBottomNavIndex;
+  final bool bottomNavPartnerMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.sizeOf(context).width >= 980;
+
+    Widget buildSidebar({required bool compact}) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9F7FF),
+          border: compact
+              ? const Border(
+                  right: BorderSide(color: Color(0xFFE6DDF6)),
+                )
+              : null,
+        ),
+        child: _WorkspaceSidebar(
+          title: title,
+          subtitle: subtitle,
+          items: navItems,
+          compact: compact,
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: _meevoBackground,
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              foregroundColor: _meevoDeepBlue,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              title: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              actions: actions,
+            ),
+      drawer: isDesktop
+          ? null
+          : Drawer(
+              backgroundColor: const Color(0xFFF9F7FF),
+              child: SafeArea(child: buildSidebar(compact: false)),
+            ),
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (isDesktop)
+              SizedBox(width: 280, child: buildSidebar(compact: true)),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+      bottomNavigationBar: !isDesktop && mobileBottomNavIndex != null
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: _FloatingBottomNav(
+                selectedIndex: mobileBottomNavIndex!,
+                isPartnerMode: bottomNavPartnerMode,
+                onSelected: (index) => _goToRootPage(context, index),
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+class _WorkspaceSidebar extends StatelessWidget {
+  const _WorkspaceSidebar({
+    required this.title,
+    required this.items,
+    required this.compact,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<_WorkspaceNavItem> items;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        compact ? 18 : 14,
+        18,
+        compact ? 18 : 14,
+        24,
+      ),
+      children: [
+        const _MeevoLogo(compact: true),
+        const SizedBox(height: 20),
+        Text(
+          title,
+          style: const TextStyle(
+            color: _meevoDeepBlue,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        if ((subtitle ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            style: const TextStyle(
+              color: _meevoMuted,
+              height: 1.5,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        for (final item in items) ...[
+          _WorkspaceSidebarButton(item: item),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _WorkspaceSidebarButton extends StatelessWidget {
+  const _WorkspaceSidebarButton({required this.item});
+
+  final _WorkspaceNavItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = item.selected;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () {
+        final scaffold = Scaffold.maybeOf(context);
+        if (scaffold?.isDrawerOpen ?? false) {
+          Navigator.of(context).pop();
+        }
+        item.onTap();
+      },
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected ? _meevoDeepBlue : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isSelected ? _meevoDeepBlue : const Color(0xFFE7E0F4),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              item.icon,
+              color: isSelected ? Colors.white : _meevoPurple,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                item.label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : _meevoDeepBlue,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DashboardSectionAccordion extends StatelessWidget {
   const _DashboardSectionAccordion({
     required this.icon,
@@ -14368,56 +14474,92 @@ void _openAdminSubscriptionHistoryPage(BuildContext context) {
   );
 }
 
+void _openAdminUsersPage(BuildContext context) {
+  final state = context.read<MeevoState>();
+  if (!state.isAdmin) {
+    _showMeevoToast(
+      context,
+      'Acces admin reserve aux comptes autorises.',
+      isError: true,
+    );
+    return;
+  }
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const _AdminUsersPage()));
+}
+
 class _PartnerDashboardPage extends StatelessWidget {
   const _PartnerDashboardPage();
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MeevoState>();
-    final width = MediaQuery.sizeOf(context).width;
-    final isDesktop = width >= 980;
+    final isDesktop = MediaQuery.sizeOf(context).width >= 980;
+    final navItems = [
+      _WorkspaceNavItem(
+        label: 'Dashboard',
+        icon: Icons.dashboard_outlined,
+        selected: true,
+        onTap: () {},
+      ),
+      _WorkspaceNavItem(
+        label: 'Abonnement',
+        icon: Icons.workspace_premium_outlined,
+        onTap: () => _openPartnerSubscriptionPage(context),
+      ),
+      if (state.hasVenuePartnerAccess)
+        _WorkspaceNavItem(
+          label: 'Revenu',
+          icon: Icons.payments_outlined,
+          onTap: () => _openPartnerRevenuePage(context),
+        ),
+      if (state.hasVenuePartnerAccess)
+        _WorkspaceNavItem(
+          label: 'Reservations',
+          icon: Icons.receipt_long_outlined,
+          onTap: () => _openPartnerBookings(context),
+        ),
+      if (state.hasVenuePartnerAccess)
+        _WorkspaceNavItem(
+          label: 'Mes lieux',
+          icon: Icons.meeting_room_outlined,
+          onTap: () => _openMyVenuesPage(context),
+        ),
+      if (state.hasProviderPartnerAccess)
+        _WorkspaceNavItem(
+          label: 'Prestations',
+          icon: Icons.storefront_outlined,
+          onTap: () => _openMyProvidersPage(context),
+        ),
+    ];
 
     return _StateToastListener(
-      child: Scaffold(
-        appBar: isDesktop
-            ? null
-            : AppBar(
-                backgroundColor: _meevoHeaderBlue,
-                title: const Text('Dashboard'),
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-        body: Column(
+      child: _WorkspaceScaffold(
+        title: 'Dashboard partenaire',
+        subtitle:
+            'Sur grand ecran la navigation reste a gauche. Sur mobile, elle sort depuis le menu.',
+        navItems: navItems,
+        mobileBottomNavIndex: 3,
+        bottomNavPartnerMode: true,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 24 : 18,
+            isDesktop ? 20 : 16,
+            isDesktop ? 24 : 18,
+            28,
+          ),
           children: [
-            if (isDesktop)
-              _DesktopTopBar(
-                state: context.read<MeevoState>(),
-                isDashboardContext: true,
+            if (state.needsPartnerSubscription)
+              const _DashboardSubscriptionLock()
+            else if (state.hasPartnerAccess)
+              _PartnerDashboard(isDesktop: isDesktop)
+            else
+              const _DashboardSubscriptionLock(
+                title: 'Acces partenaire requis',
+                subtitle:
+                    'Creez d abord votre dossier partenaire puis activez votre abonnement pour ouvrir ce dashboard.',
               ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  isDesktop ? 24 : 18,
-                  isDesktop ? 20 : 16,
-                  isDesktop ? 24 : 18,
-                  28,
-                ),
-                children: [
-                  if (state.needsPartnerSubscription)
-                    const _DashboardSubscriptionLock()
-                  else if (state.hasPartnerAccess)
-                    _PartnerDashboard(isDesktop: isDesktop)
-                  else
-                    const _DashboardSubscriptionLock(
-                      title: 'Acces partenaire requis',
-                      subtitle:
-                          'Creez d abord votre dossier partenaire puis activez votre abonnement pour ouvrir ce dashboard.',
-                    ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -14874,21 +15016,37 @@ class _PartnerReservationFinancePageState
     final isDesktop = MediaQuery.sizeOf(context).width >= 980;
     final state = context.watch<MeevoState>();
     final profile = state.currentUser?.partnerProfile;
-
-    return Scaffold(
-      backgroundColor: _meevoBackground,
-      appBar: AppBar(
-        backgroundColor: _meevoHeaderBlue,
-        title: const Text('Paiements recus'),
-        actions: [
-          IconButton(
-            tooltip: 'Configurer le reversement',
-            onPressed: _openPayoutProfileDialog,
-            icon: const Icon(Icons.account_balance_wallet_outlined),
-          ),
-        ],
-      ),
-      body: ListView(
+    return _WorkspaceScaffold(
+      title: 'Revenu partenaire',
+      subtitle: 'Paiements recus, reversements et historique partenaire.',
+      navItems: [
+        _WorkspaceNavItem(
+          label: 'Dashboard',
+          icon: Icons.dashboard_outlined,
+          onTap: () => _openDashboard(context),
+        ),
+        _WorkspaceNavItem(
+          label: 'Revenu',
+          icon: Icons.payments_outlined,
+          selected: true,
+          onTap: () {},
+        ),
+        _WorkspaceNavItem(
+          label: 'Abonnement',
+          icon: Icons.workspace_premium_outlined,
+          onTap: () => _openPartnerSubscriptionPage(context),
+        ),
+      ],
+      actions: [
+        IconButton(
+          tooltip: 'Configurer le reversement',
+          onPressed: _openPayoutProfileDialog,
+          icon: const Icon(Icons.account_balance_wallet_outlined),
+        ),
+      ],
+      mobileBottomNavIndex: 3,
+      bottomNavPartnerMode: true,
+      child: ListView(
         padding: EdgeInsets.fromLTRB(
           isDesktop ? 24 : 18,
           18,
@@ -15171,14 +15329,30 @@ class _AdminReservationFinancePageState
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.sizeOf(context).width >= 980;
-
-    return Scaffold(
-      backgroundColor: _meevoBackground,
-      appBar: AppBar(
-        backgroundColor: _meevoHeaderBlue,
-        title: const Text('Finances reservations'),
-      ),
-      body: ListView(
+    return _WorkspaceScaffold(
+      title: 'Revenu admin',
+      subtitle:
+          'Grand tableau revenus, partenaires, retraits et historiques.',
+      navItems: [
+        _WorkspaceNavItem(
+          label: 'Admin',
+          icon: Icons.admin_panel_settings_outlined,
+          onTap: () => _openAdminDashboard(context),
+        ),
+        _WorkspaceNavItem(
+          label: 'Revenu',
+          icon: Icons.payments_outlined,
+          selected: true,
+          onTap: () {},
+        ),
+        _WorkspaceNavItem(
+          label: 'Reservations',
+          icon: Icons.receipt_long_outlined,
+          onTap: () => _openAdminBookingsPage(context),
+        ),
+      ],
+      mobileBottomNavIndex: 3,
+      child: ListView(
         padding: EdgeInsets.fromLTRB(
           isDesktop ? 24 : 18,
           18,
@@ -16438,6 +16612,808 @@ class _EditProviderPageState extends State<_EditProviderPage> {
   }
 }
 
+class _AdminUsersPage extends StatefulWidget {
+  const _AdminUsersPage();
+
+  @override
+  State<_AdminUsersPage> createState() => _AdminUsersPageState();
+}
+
+class _AdminUsersPageState extends State<_AdminUsersPage> {
+  final _searchController = TextEditingController();
+  final _cityController = TextEditingController();
+  AdminUsersResponse _response = const AdminUsersResponse.empty();
+  bool _loading = true;
+  String? _error;
+  String _role = 'Tous';
+  String _subscriptionStatus = 'Tous';
+  DateTime? _fromDate;
+  DateTime? _toDate;
+  Timer? _debounce;
+
+  String _asIsoDate(DateTime value) =>
+      DateFormat('yyyy-MM-dd', 'fr_FR').format(value);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_loadUsers());
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    _cityController.dispose();
+    super.dispose();
+  }
+
+  String get _fromDateValue => _fromDate == null ? '' : _asIsoDate(_fromDate!);
+  String get _toDateValue => _toDate == null ? '' : _asIsoDate(_toDate!);
+
+  void _scheduleReload() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      unawaited(_loadUsers(silent: true));
+    });
+  }
+
+  Future<void> _loadUsers({bool silent = false}) async {
+    final token = context.read<MeevoState>().token;
+    if (token == null) return;
+
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final response = await context.read<MeevoState>().api.fetchAdminUsers(
+        token: token,
+        query: _searchController.text,
+        role: _role,
+        subscriptionStatus: _subscriptionStatus,
+        city: _cityController.text,
+        from: _fromDateValue,
+        to: _toDateValue,
+      );
+      if (!mounted) return;
+      setState(() {
+        _response = response;
+        _loading = false;
+      });
+    } on MeevoApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Impossible de charger la liste des utilisateurs.';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final now = DateTime.now();
+    final initialDate = isFrom
+        ? (_fromDate ?? now)
+        : (_toDate ?? _fromDate ?? now);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2022),
+      lastDate: DateTime(now.year + 2, 12, 31),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (isFrom) {
+        _fromDate = picked;
+      } else {
+        _toDate = picked;
+      }
+    });
+    await _loadUsers(silent: true);
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _searchController.clear();
+      _cityController.clear();
+      _role = 'Tous';
+      _subscriptionStatus = 'Tous';
+      _fromDate = null;
+      _toDate = null;
+    });
+    unawaited(_loadUsers(silent: true));
+  }
+
+  Future<void> _export() async {
+    final ok = await exportTsvFile(
+      filename: 'utilisateurs_meevo.tsv',
+      content: _buildAdminUsersTsv(_response.items),
+    );
+    if (!mounted) return;
+    _showMeevoToast(
+      context,
+      ok ? 'Export utilisateurs pret.' : 'Export impossible.',
+      isError: !ok,
+    );
+  }
+
+  Future<void> _openCreateAdminDialog() async {
+    final fullNameController = TextEditingController();
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final phoneController = TextEditingController();
+    final cityController = TextEditingController(text: 'Lome');
+    var loading = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Ajouter un admin'),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: fullNameController,
+                    decoration: const InputDecoration(labelText: 'Nom complet'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Mot de passe temporaire',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Telephone'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: cityController,
+                    decoration: const InputDecoration(labelText: 'Ville'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: loading ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton.icon(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        final token = context.read<MeevoState>().token;
+                        if (token == null) return;
+                        setDialogState(() => loading = true);
+                        try {
+                          await context.read<MeevoState>().api.createAdminUser(
+                            token: token,
+                            fullName: fullNameController.text.trim(),
+                            email: emailController.text.trim(),
+                            password: passwordController.text,
+                            phone: phoneController.text.trim(),
+                            city: cityController.text.trim(),
+                          );
+                          if (!mounted) return;
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          _showMeevoToast(context, 'Compte admin enregistre.');
+                          await _loadUsers(silent: true);
+                        } on MeevoApiException catch (error) {
+                          if (!mounted) return;
+                          _showMeevoToast(
+                            context,
+                            error.message,
+                            isError: true,
+                          );
+                          if (dialogContext.mounted) {
+                            setDialogState(() => loading = false);
+                          }
+                        } catch (_) {
+                          if (!mounted) return;
+                          _showMeevoToast(
+                            context,
+                            'Creation admin impossible pour le moment.',
+                            isError: true,
+                          );
+                          if (dialogContext.mounted) {
+                            setDialogState(() => loading = false);
+                          }
+                        }
+                      },
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: Text(loading ? 'Creation...' : 'Enregistrer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _toggleAdmin(AdminUserRecord record) async {
+    final token = context.read<MeevoState>().token;
+    if (token == null) return;
+    final willBecomeAdmin = record.user.role != 'admin';
+
+    try {
+      await context.read<MeevoState>().api.updateAdminUserAdminStatus(
+        token: token,
+        userId: record.user.id,
+        isAdmin: willBecomeAdmin,
+      );
+      if (!mounted) return;
+      _showMeevoToast(
+        context,
+        willBecomeAdmin
+            ? 'Utilisateur promu admin.'
+            : 'Droits admin retires.',
+      );
+      await _loadUsers(silent: true);
+    } on MeevoApiException catch (error) {
+      if (!mounted) return;
+      _showMeevoToast(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
+      _showMeevoToast(
+        context,
+        'Impossible de modifier les droits admin.',
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _deleteUser(AdminUserRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer cet utilisateur ?'),
+        content: Text(
+          'Cette action supprimera ${record.user.fullName}, ses reservations, ses paiements, ses lieux et ses prestations lies.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB42318),
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    final token = context.read<MeevoState>().token;
+    if (token == null) return;
+
+    try {
+      await context.read<MeevoState>().api.deleteAdminUser(
+        token: token,
+        userId: record.user.id,
+      );
+      if (!mounted) return;
+      _showMeevoToast(context, 'Utilisateur supprime.');
+      await _loadUsers(silent: true);
+    } on MeevoApiException catch (error) {
+      if (!mounted) return;
+      _showMeevoToast(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
+      _showMeevoToast(
+        context,
+        'Suppression impossible pour le moment.',
+        isError: true,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.sizeOf(context).width >= 980;
+    final summary = _response.summary;
+    return _WorkspaceScaffold(
+      title: 'Admin Meevo',
+      subtitle: 'Utilisateurs, droits admin et filtres avances.',
+      navItems: [
+        _WorkspaceNavItem(
+          label: 'Admin',
+          icon: Icons.admin_panel_settings_outlined,
+          onTap: () => _openAdminDashboard(context),
+        ),
+        _WorkspaceNavItem(
+          label: 'Utilisateurs',
+          icon: Icons.people_alt_outlined,
+          selected: true,
+          onTap: () {},
+        ),
+        _WorkspaceNavItem(
+          label: 'Revenu',
+          icon: Icons.payments_outlined,
+          onTap: () => _openAdminReservationFinancePage(context),
+        ),
+        _WorkspaceNavItem(
+          label: 'Reservations',
+          icon: Icons.receipt_long_outlined,
+          onTap: () => _openAdminBookingsPage(context),
+        ),
+        _WorkspaceNavItem(
+          label: 'Abonnements',
+          icon: Icons.workspace_premium_outlined,
+          onTap: () => _openAdminSubscriptionHistoryPage(context),
+        ),
+      ],
+      mobileBottomNavIndex: 3,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          isDesktop ? 24 : 18,
+          18,
+          isDesktop ? 24 : 18,
+          28,
+        ),
+        children: [
+          _SectionPanel(
+            title: 'Filtres et actions',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AdminSearchField(
+                  controller: _searchController,
+                  hint: 'Rechercher par nom, email, telephone, ville ou partenaire...',
+                  onChanged: (_) => _scheduleReload(),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: isDesktop ? 180 : double.infinity,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _role,
+                        decoration: const InputDecoration(labelText: 'Role'),
+                        items: const [
+                          DropdownMenuItem(value: 'Tous', child: Text('Tous')),
+                          DropdownMenuItem(
+                            value: 'customer',
+                            child: Text('Clients'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'partner',
+                            child: Text('Partenaires'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'admin',
+                            child: Text('Admins'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _role = value);
+                          unawaited(_loadUsers(silent: true));
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isDesktop ? 220 : double.infinity,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _subscriptionStatus,
+                        decoration: const InputDecoration(
+                          labelText: 'Abonnement',
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Tous', child: Text('Tous')),
+                          DropdownMenuItem(
+                            value: 'inactive',
+                            child: Text('Inactif'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'pending',
+                            child: Text('En attente'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'active',
+                            child: Text('Actif'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'expired',
+                            child: Text('Expire'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'cancelled',
+                            child: Text('Annule'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _subscriptionStatus = value);
+                          unawaited(_loadUsers(silent: true));
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isDesktop ? 220 : double.infinity,
+                      child: TextField(
+                        controller: _cityController,
+                        decoration: const InputDecoration(labelText: 'Ville'),
+                        onChanged: (_) => _scheduleReload(),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _pickDate(isFrom: true),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text(
+                        _fromDate == null
+                            ? 'Date debut'
+                            : _formatDisplayDate(_fromDateValue),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _pickDate(isFrom: false),
+                      icon: const Icon(Icons.event_available_outlined),
+                      label: Text(
+                        _toDate == null
+                            ? 'Date fin'
+                            : _formatDisplayDate(_toDateValue),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _loading ? null : () => unawaited(_loadUsers()),
+                      icon: const Icon(Icons.sync),
+                      label: const Text('Actualiser'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _response.items.isEmpty ? null : _export,
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('Exporter TSV'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _openCreateAdminDialog,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _meevoYellow,
+                        foregroundColor: _meevoText,
+                      ),
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: const Text('Ajouter un admin'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _clearFilters,
+                      icon: const Icon(Icons.clear_all),
+                      label: const Text('Reinitialiser'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFEAE7F7)),
+            ),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _InlineStatPill(
+                  label: 'Utilisateurs',
+                  value: summary.totalUsers.toString(),
+                  emphasis: true,
+                ),
+                _InlineStatPill(
+                  label: 'Admins',
+                  value: summary.admins.toString(),
+                  emphasis: true,
+                ),
+                _InlineStatPill(
+                  label: 'Partenaires',
+                  value: summary.partners.toString(),
+                ),
+                _InlineStatPill(
+                  label: 'Clients',
+                  value: summary.customers.toString(),
+                ),
+                _InlineStatPill(
+                  label: 'Abonnements actifs',
+                  value: summary.activeSubscriptions.toString(),
+                  emphasis: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionPanel(
+            title: 'Grand tableau utilisateurs',
+            child: _AdminUsersTable(
+              records: _response.items,
+              loading: _loading,
+              onToggleAdmin: _toggleAdmin,
+              onDelete: _deleteUser,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(
+                color: Color(0xFFB42318),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminUsersTable extends StatelessWidget {
+  const _AdminUsersTable({
+    required this.records,
+    required this.loading,
+    required this.onToggleAdmin,
+    required this.onDelete,
+  });
+
+  final List<AdminUserRecord> records;
+  final bool loading;
+  final Future<void> Function(AdminUserRecord record) onToggleAdmin;
+  final Future<void> Function(AdminUserRecord record) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && records.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator(color: _meevoPurple)),
+      );
+    }
+
+    if (records.isEmpty) {
+      return const Text(
+        'Aucun utilisateur ne correspond a ces filtres.',
+        style: TextStyle(color: _meevoMuted),
+      );
+    }
+
+    return Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 1180),
+          child: DataTable(
+            headingRowColor: WidgetStatePropertyAll(
+              const Color(0xFFF7F6FB),
+            ),
+            columns: const [
+              DataColumn(label: Text('Date / Heure')),
+              DataColumn(label: Text('Nom')),
+              DataColumn(label: Text('Email')),
+              DataColumn(label: Text('Telephone')),
+              DataColumn(label: Text('Ville')),
+              DataColumn(label: Text('Role')),
+              DataColumn(label: Text('Partenaire')),
+              DataColumn(label: Text('Abonnement')),
+              DataColumn(label: Text('Actions')),
+            ],
+            rows: [
+              for (final record in records)
+                DataRow(
+                  cells: [
+                    DataCell(
+                      Text(
+                        record.user.createdAt == null
+                            ? '--'
+                            : _formatDisplayDate(record.user.createdAt!),
+                      ),
+                    ),
+                    DataCell(
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            record.user.fullName,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          if (record.whatsapp.trim().isNotEmpty)
+                            Text(
+                              'WhatsApp: ${record.whatsapp}',
+                              style: const TextStyle(
+                                color: _meevoMuted,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    DataCell(
+                      SelectableText(
+                        record.user.email,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    DataCell(Text(record.user.phone?.trim().isNotEmpty == true
+                        ? record.user.phone!
+                        : '--')),
+                    DataCell(Text(record.user.city?.trim().isNotEmpty == true
+                        ? record.user.city!
+                        : '--')),
+                    DataCell(_AdminUserRoleBadge(role: record.user.role)),
+                    DataCell(
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            record.businessName.trim().isNotEmpty
+                                ? record.businessName
+                                : 'Aucun',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            record.partnerType.trim().isNotEmpty
+                                ? record.partnerType
+                                : 'Sans profil partenaire',
+                            style: const TextStyle(
+                              color: _meevoMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    DataCell(
+                      _AdminUserSubscriptionBadge(
+                        state: record.subscriptionState,
+                      ),
+                    ),
+                    DataCell(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => onToggleAdmin(record),
+                            icon: Icon(
+                              record.user.role == 'admin'
+                                  ? Icons.shield_outlined
+                                  : Icons.admin_panel_settings_outlined,
+                            ),
+                            label: Text(
+                              record.user.role == 'admin'
+                                  ? 'Retirer admin'
+                                  : 'Mettre admin',
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => onDelete(record),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Color(0xFFB42318),
+                            ),
+                            label: const Text(
+                              'Supprimer',
+                              style: TextStyle(color: Color(0xFFB42318)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminUserRoleBadge extends StatelessWidget {
+  const _AdminUserRoleBadge({required this.role});
+
+  final String role;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (role) {
+      'admin' => ('Admin', const Color(0xFF4F46E5)),
+      'partner' => ('Partenaire', const Color(0xFF2563EB)),
+      _ => ('Client', const Color(0xFF667085)),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _AdminUserSubscriptionBadge extends StatelessWidget {
+  const _AdminUserSubscriptionBadge({required this.state});
+
+  final String state;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (state) {
+      'active' => ('Actif', const Color(0xFF16A34A)),
+      'pending' => ('En attente', const Color(0xFFF59E0B)),
+      'expired' => ('Expire', const Color(0xFFB42318)),
+      'cancelled' => ('Annule', const Color(0xFF7A5AF8)),
+      _ => ('Inactif', const Color(0xFF667085)),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+enum _AdminDashboardSection { stats, bookings, venues, providers, subscriptions }
+
 class _AdminDashboardPage extends StatefulWidget {
   const _AdminDashboardPage();
 
@@ -16450,6 +17426,7 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
   final _venueSearchController = TextEditingController();
   final _providerSearchController = TextEditingController();
   String _bookingStatus = 'confirmed';
+  _AdminDashboardSection _section = _AdminDashboardSection.stats;
 
   @override
   void dispose() {
@@ -16517,307 +17494,312 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
     final filteredVenues = _filterVenues(venues);
     final filteredProviders = _filterProviders(providers);
 
-    return DefaultTabController(
-      length: 5,
-      child: Scaffold(
-        backgroundColor: _meevoBackground,
-        appBar: AppBar(
-          backgroundColor: _meevoHeaderBlue,
-          title: const Text('Admin Meevo'),
-          bottom: const TabBar(
-            labelColor: _meevoPurple,
-            indicatorColor: _meevoPurple,
-            tabs: [
-              Tab(text: 'Stats'),
-              Tab(text: 'Reservations'),
-              Tab(text: 'Lieux'),
-              Tab(text: 'Prestations'),
-              Tab(text: 'Abonnements'),
+    final navItems = [
+      _WorkspaceNavItem(
+        label: 'Stats',
+        icon: Icons.grid_view_outlined,
+        selected: _section == _AdminDashboardSection.stats,
+        onTap: () => setState(() => _section = _AdminDashboardSection.stats),
+      ),
+      _WorkspaceNavItem(
+        label: 'Reservations',
+        icon: Icons.receipt_long_outlined,
+        selected: _section == _AdminDashboardSection.bookings,
+        onTap: () => setState(() => _section = _AdminDashboardSection.bookings),
+      ),
+      _WorkspaceNavItem(
+        label: 'Lieux',
+        icon: Icons.meeting_room_outlined,
+        selected: _section == _AdminDashboardSection.venues,
+        onTap: () => setState(() => _section = _AdminDashboardSection.venues),
+      ),
+      _WorkspaceNavItem(
+        label: 'Prestations',
+        icon: Icons.storefront_outlined,
+        selected: _section == _AdminDashboardSection.providers,
+        onTap: () => setState(() => _section = _AdminDashboardSection.providers),
+      ),
+      _WorkspaceNavItem(
+        label: 'Abonnements',
+        icon: Icons.workspace_premium_outlined,
+        selected: _section == _AdminDashboardSection.subscriptions,
+        onTap: () =>
+            setState(() => _section = _AdminDashboardSection.subscriptions),
+      ),
+      _WorkspaceNavItem(
+        label: 'Utilisateurs',
+        icon: Icons.people_alt_outlined,
+        onTap: () => _openAdminUsersPage(context),
+      ),
+      _WorkspaceNavItem(
+        label: 'Revenu',
+        icon: Icons.payments_outlined,
+        onTap: () => _openAdminReservationFinancePage(context),
+      ),
+    ];
+
+    final Widget content = switch (_section) {
+      _AdminDashboardSection.stats => ListView(
+        padding: EdgeInsets.fromLTRB(
+          isDesktop ? 24 : 18,
+          18,
+          isDesktop ? 24 : 18,
+          28,
+        ),
+        children: [
+          _SectionPanel(
+            title: 'Vue globale',
+            child: isDesktop
+                ? Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _AdminStatCard(label: 'Lieux', value: stats.venuesCount),
+                      _AdminStatCard(label: 'Villes', value: stats.citiesCount),
+                      _AdminStatCard(
+                        label: 'Prestations',
+                        value: stats.providersCount,
+                      ),
+                      _AdminStatCard(
+                        label: 'Reservations',
+                        value: stats.bookingsCount,
+                      ),
+                    ],
+                  )
+                : GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 1.55,
+                    children: [
+                      _AdminStatCard(
+                        label: 'Lieux',
+                        value: stats.venuesCount,
+                        compact: true,
+                      ),
+                      _AdminStatCard(
+                        label: 'Villes',
+                        value: stats.citiesCount,
+                        compact: true,
+                      ),
+                      _AdminStatCard(
+                        label: 'Prestations',
+                        value: stats.providersCount,
+                        compact: true,
+                      ),
+                      _AdminStatCard(
+                        label: 'Reservations',
+                        value: stats.bookingsCount,
+                        compact: true,
+                      ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 18),
+          _SectionPanel(
+            title: 'Actions admin',
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _DashboardActionCard(
+                  icon: Icons.meeting_room_outlined,
+                  title: 'Toutes les salles',
+                  subtitle: 'Voir les lieux publies.',
+                  onTap: () => _goToRootPage(context, 1),
+                ),
+                _DashboardActionCard(
+                  icon: Icons.storefront_outlined,
+                  title: 'Tous les prestataires',
+                  subtitle: 'Voir toutes les prestations.',
+                  onTap: () => _openProviders(context, isDesktop: isDesktop),
+                ),
+                _DashboardActionCard(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Toutes les reservations',
+                  subtitle: 'Suivi complet des reservations.',
+                  onTap: () => setState(
+                    () => _section = _AdminDashboardSection.bookings,
+                  ),
+                ),
+                _DashboardActionCard(
+                  icon: Icons.payments_outlined,
+                  title: 'Revenu admin',
+                  subtitle: 'Grand tableau, filtres et retraits.',
+                  onTap: () => _openAdminReservationFinancePage(context),
+                ),
+                _DashboardActionCard(
+                  icon: Icons.workspace_premium_outlined,
+                  title: 'Abonnements',
+                  subtitle: 'Suivre, filtrer et exporter.',
+                  onTap: () => setState(
+                    () => _section = _AdminDashboardSection.subscriptions,
+                  ),
+                ),
+                _DashboardActionCard(
+                  icon: Icons.people_alt_outlined,
+                  title: 'Utilisateurs',
+                  subtitle: 'Tableau global, filtres et droits admin.',
+                  onTap: () => _openAdminUsersPage(context),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _SectionPanel(
+            title: 'Dernieres reservations',
+            child: _PartnerBookingsPanel(
+              bookings: allBookings,
+              withPanel: false,
+            ),
+          ),
+        ],
+      ),
+      _AdminDashboardSection.bookings => ListView(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+        children: [
+          _AdminSearchField(
+            controller: _bookingSearchController,
+            hint: 'Rechercher une reservation (client, lieu, tel)...',
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final status in const [
+                'Tous',
+                'confirmed',
+                'rejected',
+                'cancelled',
+              ])
+                ChoiceChip(
+                  label: Text(status),
+                  selected: _bookingStatus == status,
+                  onSelected: (_) => setState(() => _bookingStatus = status),
+                ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: filteredBookings.isEmpty
+                    ? null
+                    : () async {
+                        final tsv = _buildBookingsTsv(filteredBookings);
+                        final ok = await exportTsvFile(
+                          filename: 'reservations_global.tsv',
+                          content: tsv,
+                        );
+                        if (!context.mounted) return;
+                        _showMeevoToast(
+                          context,
+                          ok ? 'Export TSV pret.' : 'Export impossible.',
+                          isError: !ok,
+                        );
+                      },
+                icon: const Icon(Icons.download),
+                label: const Text('Exporter TSV'),
+              ),
             ],
           ),
-        ),
-        body: TabBarView(
-          children: [
-            ListView(
-              padding: EdgeInsets.fromLTRB(
-                isDesktop ? 24 : 18,
-                18,
-                isDesktop ? 24 : 18,
-                28,
-              ),
-              children: [
-                _SectionPanel(
-                  title: 'Vue globale',
-                  child: isDesktop
-                      ? Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            _AdminStatCard(
-                              label: 'Lieux',
-                              value: stats.venuesCount,
-                            ),
-                            _AdminStatCard(
-                              label: 'Villes',
-                              value: stats.citiesCount,
-                            ),
-                            _AdminStatCard(
-                              label: 'Prestations',
-                              value: stats.providersCount,
-                            ),
-                            _AdminStatCard(
-                              label: 'Reservations',
-                              value: stats.bookingsCount,
-                            ),
-                          ],
-                        )
-                      : GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 1.55,
-                          children: [
-                            _AdminStatCard(
-                              label: 'Lieux',
-                              value: stats.venuesCount,
-                              compact: true,
-                            ),
-                            _AdminStatCard(
-                              label: 'Villes',
-                              value: stats.citiesCount,
-                              compact: true,
-                            ),
-                            _AdminStatCard(
-                              label: 'Prestations',
-                              value: stats.providersCount,
-                              compact: true,
-                            ),
-                            _AdminStatCard(
-                              label: 'Reservations',
-                              value: stats.bookingsCount,
-                              compact: true,
-                            ),
-                          ],
-                        ),
-                ),
-                const SizedBox(height: 18),
-                _SectionPanel(
-                  title: 'Actions admin',
-                  child: Builder(
-                    builder: (context) {
-                      final isMobile = MediaQuery.sizeOf(context).width < 720;
-                      final actions = [
-                        _DashboardActionCard(
-                          icon: Icons.meeting_room_outlined,
-                          title: 'Toutes les salles',
-                          subtitle: 'Voir les lieux publies.',
-                          onTap: () {
-                            Navigator.pop(context);
-                            state.setPageIndex(1);
-                          },
-                        ),
-                        _DashboardActionCard(
-                          icon: Icons.storefront_outlined,
-                          title: 'Tous les prestataires',
-                          subtitle: 'Voir toutes les prestations.',
-                          onTap: () =>
-                              _openProviders(context, isDesktop: isDesktop),
-                        ),
-                        _DashboardActionCard(
-                          icon: Icons.receipt_long_outlined,
-                          title: 'Toutes les reservations',
-                          subtitle: 'Suivi complet des reservations.',
-                          onTap: () => _openAdminBookingsPage(context),
-                        ),
-                        _DashboardActionCard(
-                          icon: Icons.payments_outlined,
-                          title: 'Paiements reservations',
-                          subtitle:
-                              'Commission Meevo, reversements et comptabilite.',
-                          onTap: () =>
-                              _openAdminReservationFinancePage(context),
-                        ),
-                        _DashboardActionCard(
-                          icon: Icons.workspace_premium_outlined,
-                          title: 'Abonnements',
-                          subtitle: 'Suivre, filtrer et exporter.',
-                          onTap: () =>
-                              DefaultTabController.of(context).animateTo(4),
-                        ),
-                      ];
-
-                      if (!isMobile) {
-                        return Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: actions,
-                        );
-                      }
-
-                      return GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.95,
-                        children: actions,
+          const SizedBox(height: 16),
+          _PartnerBookingsPanel(
+            bookings: filteredBookings,
+            withPanel: false,
+          ),
+        ],
+      ),
+      _AdminDashboardSection.venues => ListView(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+        children: [
+          _AdminSearchField(
+            controller: _venueSearchController,
+            hint: 'Filtrer les lieux...',
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: filteredVenues.isEmpty
+                  ? null
+                  : () async {
+                      final tsv = _buildVenuesTsv(filteredVenues);
+                      final ok = await exportTsvFile(
+                        filename: 'lieux_global.tsv',
+                        content: tsv,
+                      );
+                      if (!context.mounted) return;
+                      _showMeevoToast(
+                        context,
+                        ok ? 'Export TSV pret.' : 'Export impossible.',
+                        isError: !ok,
                       );
                     },
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _SectionPanel(
-                  title: 'Dernieres reservations',
-                  child: _PartnerBookingsPanel(
-                    bookings: allBookings,
-                    withPanel: false,
-                  ),
-                ),
-              ],
+              icon: const Icon(Icons.download),
+              label: const Text('Exporter TSV'),
             ),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-              children: [
-                _AdminSearchField(
-                  controller: _bookingSearchController,
-                  hint: 'Rechercher une reservation (client, lieu, tel)...',
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final status in const [
-                      'Tous',
-                      'confirmed',
-                      'rejected',
-                      'cancelled',
-                    ])
-                      ChoiceChip(
-                        label: Text(status),
-                        selected: _bookingStatus == status,
-                        onSelected: (_) {
-                          setState(() => _bookingStatus = status);
-                        },
-                      ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: filteredBookings.isEmpty
-                          ? null
-                          : () async {
-                              final tsv = _buildBookingsTsv(filteredBookings);
-                              final ok = await exportTsvFile(
-                                filename: 'reservations_global.tsv',
-                                content: tsv,
-                              );
-                              if (!context.mounted) return;
-                              _showMeevoToast(
-                                context,
-                                ok ? 'Export TSV pret.' : 'Export impossible.',
-                                isError: !ok,
-                              );
-                            },
-                      icon: const Icon(Icons.download),
-                      label: const Text('Exporter TSV'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _PartnerBookingsPanel(
-                  bookings: filteredBookings,
-                  withPanel: false,
-                ),
-              ],
+          ),
+          const SizedBox(height: 16),
+          _SectionPanel(
+            title: 'Lieux disponibles',
+            child: _VenuePreviewList(venues: filteredVenues, maxItems: 999),
+          ),
+        ],
+      ),
+      _AdminDashboardSection.providers => ListView(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+        children: [
+          _AdminSearchField(
+            controller: _providerSearchController,
+            hint: 'Filtrer les prestations...',
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: filteredProviders.isEmpty
+                  ? null
+                  : () async {
+                      final tsv = _buildProvidersTsv(filteredProviders);
+                      final ok = await exportTsvFile(
+                        filename: 'prestations_global.tsv',
+                        content: tsv,
+                      );
+                      if (!context.mounted) return;
+                      _showMeevoToast(
+                        context,
+                        ok ? 'Export TSV pret.' : 'Export impossible.',
+                        isError: !ok,
+                      );
+                    },
+              icon: const Icon(Icons.download),
+              label: const Text('Exporter TSV'),
             ),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-              children: [
-                _AdminSearchField(
-                  controller: _venueSearchController,
-                  hint: 'Filtrer les lieux...',
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: filteredVenues.isEmpty
-                        ? null
-                        : () async {
-                            final tsv = _buildVenuesTsv(filteredVenues);
-                            final ok = await exportTsvFile(
-                              filename: 'lieux_global.tsv',
-                              content: tsv,
-                            );
-                            if (!context.mounted) return;
-                            _showMeevoToast(
-                              context,
-                              ok ? 'Export TSV pret.' : 'Export impossible.',
-                              isError: !ok,
-                            );
-                          },
-                    icon: const Icon(Icons.download),
-                    label: const Text('Exporter TSV'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _SectionPanel(
-                  title: 'Lieux disponibles',
-                  child: _VenuePreviewList(
-                    venues: filteredVenues,
-                    maxItems: 999,
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 16),
+          _SectionPanel(
+            title: 'Prestations disponibles',
+            child: _ProviderPreviewList(
+              providers: filteredProviders,
+              maxItems: 999,
             ),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-              children: [
-                _AdminSearchField(
-                  controller: _providerSearchController,
-                  hint: 'Filtrer les prestations...',
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: filteredProviders.isEmpty
-                        ? null
-                        : () async {
-                            final tsv = _buildProvidersTsv(filteredProviders);
-                            final ok = await exportTsvFile(
-                              filename: 'prestations_global.tsv',
-                              content: tsv,
-                            );
-                            if (!context.mounted) return;
-                            _showMeevoToast(
-                              context,
-                              ok ? 'Export TSV pret.' : 'Export impossible.',
-                              isError: !ok,
-                            );
-                          },
-                    icon: const Icon(Icons.download),
-                    label: const Text('Exporter TSV'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _SectionPanel(
-                  title: 'Prestations disponibles',
-                  child: _ProviderPreviewList(
-                    providers: filteredProviders,
-                    maxItems: 999,
-                  ),
-                ),
-              ],
-            ),
-            const _AdminSubscriptionsTab(),
-          ],
-        ),
+          ),
+        ],
+      ),
+      _AdminDashboardSection.subscriptions => const _AdminSubscriptionsTab(),
+    };
+
+    return _StateToastListener(
+      child: _WorkspaceScaffold(
+        title: 'Admin Meevo',
+        subtitle:
+            'Menu fixe a gauche sur grand ecran, menu hamburger sur mobile.',
+        navItems: navItems,
+        mobileBottomNavIndex: 3,
+        child: content,
       ),
     );
   }
@@ -18349,6 +19331,12 @@ void _showMeevoToast(
   );
 }
 
+void _goToRootPage(BuildContext context, int index) {
+  final state = context.read<MeevoState>();
+  Navigator.of(context).popUntil((route) => route.isFirst);
+  state.setPageIndex(index);
+}
+
 class _FloatingBottomNav extends StatelessWidget {
   const _FloatingBottomNav({
     required this.selectedIndex,
@@ -18889,6 +19877,42 @@ String _buildSubscriptionsTsv(List<AdminSubscriptionRecord> records) {
         record.graceEndsAt ?? '',
         record.payment.createdAt ?? '',
         record.payment.paidAt ?? '',
+      ].join('\t'),
+    );
+  }
+
+  return buffer.toString();
+}
+
+String _buildAdminUsersTsv(List<AdminUserRecord> records) {
+  const headers = [
+    'Nom',
+    'Email',
+    'Telephone',
+    'Ville',
+    'Role',
+    'Business',
+    'Type_partenaire',
+    'Whatsapp',
+    'Etat_abonnement',
+    'Cree_le',
+  ];
+
+  final buffer = StringBuffer()..writeln(headers.join('\t'));
+
+  for (final record in records) {
+    buffer.writeln(
+      [
+        record.user.fullName,
+        record.user.email,
+        record.user.phone ?? '',
+        record.user.city ?? '',
+        record.user.role,
+        record.businessName,
+        record.partnerType,
+        record.whatsapp,
+        record.subscriptionState,
+        record.user.createdAt ?? '',
       ].join('\t'),
     );
   }
