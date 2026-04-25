@@ -14871,8 +14871,11 @@ class _PartnerReservationFinancePageState
       });
     } on MeevoApiException catch (error) {
       if (!mounted) return;
+      final rawMessage = error.message.trim();
       setState(() {
-        _error = error.message;
+        _error = rawMessage.toLowerCase() == 'route introuvable.'
+            ? 'Le module utilisateurs admin n etait pas encore publie sur le serveur. Rechargez la page ou reessayez maintenant.'
+            : rawMessage;
         _loading = false;
       });
     } catch (_) {
@@ -17169,12 +17172,17 @@ class _AdminUsersPageState extends State<_AdminUsersPage> {
           const SizedBox(height: 16),
           _SectionPanel(
             title: 'Grand tableau utilisateurs',
-            child: _AdminUsersTable(
-              records: _response.items,
-              loading: _loading,
-              onToggleAdmin: _toggleAdmin,
-              onDelete: _deleteUser,
-            ),
+            child: _error != null && _response.items.isEmpty && !_loading
+                ? _AdminUsersLoadError(
+                    message: _error!,
+                    onRetry: () => unawaited(_loadUsers()),
+                  )
+                : _AdminUsersTable(
+                    records: _response.items,
+                    loading: _loading,
+                    onToggleAdmin: _toggleAdmin,
+                    onDelete: _deleteUser,
+                  ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -17351,6 +17359,49 @@ class _AdminUsersTable extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AdminUsersLoadError extends StatelessWidget {
+  const _AdminUsersLoadError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4F2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF7D0CA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Chargement impossible',
+            style: TextStyle(
+              color: Color(0xFFB42318),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(color: _meevoMuted, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.sync),
+            label: const Text('Reessayer'),
+          ),
+        ],
       ),
     );
   }
